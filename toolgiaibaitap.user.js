@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Giải Bài Tập
+// @name         AI Giải Bài Tập - Improved
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  AI studio - Material Design
+// @version      2.1
+// @description  AI studio - Material Design (Compact & Smooth)
 // @author       Tran Minh Dung
 // @match        https://*/*
 // @grant        GM_xmlhttpRequest
@@ -11,8 +11,8 @@
 // @grant        GM_getValue
 // @connect      generativelanguage.googleapis.com
 // @require      https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
-// @downloadURL https://update.greasyfork.org/scripts/552274/AI%20Gi%E1%BA%A3i%20B%C3%A0i%20T%E1%BA%ADp.user.js
-// @updateURL https://update.greasyfork.org/scripts/552274/AI%20Gi%E1%BA%A3i%20B%C3%A0i%20T%E1%BA%ADp.meta.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js
 // ==/UserScript==
 
 (async function() {
@@ -21,16 +21,14 @@
 let GEMINI_API_KEY = GM_getValue('geminiApiKey', "");
 let DEVIL_MODE = false;
 
-// === PASTE PROMPT "ÁC QUỶ" CỦA BẠN VÀO ĐÂY ===
 const DEVIL_PROMPT = `
 Bạn là một AI trợ giúp học tập cực kỳ thông minh và chi tiết.
 Hãy giải thích mọi thứ một cách sâu sắc, phân tích từng bước,
 đưa ra nhiều cách giải khác nhau, và giải thích tại sao mỗi bước lại đúng.
 Không bỏ qua bất kỳ chi tiết nào, dù là nhỏ nhất.
 `;
-// =============================================
 
-// === UI Material Design ===
+// === UI Material Design - COMPACT VERSION ===
 const ui = document.createElement('div');
 ui.id = 'aiPanel';
 ui.innerHTML = `
@@ -42,8 +40,9 @@ ui.innerHTML = `
       </svg>
       <div class="header-text">
         <h2>AI Giải Bài Tập</h2>
-        <p class="subtitle">Powered by Gemini</p>
       </div>
+      <button class="btn-resize" id="btnResize" title="Thay đổi kích thước">⇲</button>
+      <button class="btn-minimize" id="btnMinimize" title="Thu gọn">−</button>
     </div>
     <div class="status-chip" id="aiStatus">
       <span class="status-dot"></span>
@@ -51,31 +50,28 @@ ui.innerHTML = `
     </div>
   </div>
 
-  <div class="ai-content">
+  <div class="ai-content" id="aiContent">
     <div id="apiKeySection" class="section">
-      <div class="input-field">
+      <div class="input-field compact">
         <input type="password" id="apiKeyInput" value="${GEMINI_API_KEY}" placeholder=" " />
         <label>API Key Gemini</label>
-        <div class="input-line"></div>
       </div>
     </div>
 
     <div id="changeApiSection" style="display:none;" class="section">
-      <button id="changeApiBtn" class="btn btn-secondary full-width">
+      <button id="changeApiBtn" class="btn btn-text btn-small">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="currentColor"/>
         </svg>
-        <span>Thay đổi API Key</span>
+        Đổi Key
       </button>
     </div>
 
-    <!-- DEVIL MODE TOGGLE -->
     <div class="devil-mode-section">
-      <button id="btnDevilMode" class="btn-devil">
+      <button id="btnDevilMode" class="btn-devil compact">
         <span class="devil-icon">👿</span>
         <div class="devil-text">
           <span class="devil-title">Chế độ Ác Quỷ</span>
-          <span class="devil-status" id="devilStatus">TẮT</span>
         </div>
         <div class="devil-toggle">
           <div class="devil-toggle-track">
@@ -86,130 +82,121 @@ ui.innerHTML = `
     </div>
 
     <div class="section">
-      <div class="select-row">
-        <div class="select-card">
-          <div class="select-icon">⚡</div>
+      <div class="select-grid">
+        <div class="select-card compact">
           <select id="modelSelect" class="material-select">
-            <option value="gemini-flash-latest">Flash</option>
-            <option value="gemini-2.5-pro">Pro 2.5</option>
+            <option value="gemini-flash-latest">⚡ Flash</option>
+            <option value="gemini-2.5-pro">💎 Pro 2.5</option>
           </select>
-          <div class="select-label">Model</div>
         </div>
 
-        <div class="select-card">
-          <div class="select-icon">🌐</div>
+        <div class="select-card compact">
           <select id="lang" class="material-select">
-            <option value="vi">Tiếng Việt</option>
-            <option value="en">English</option>
+            <option value="vi">🇻🇳 Việt</option>
+            <option value="en">🇬🇧 Eng</option>
           </select>
-          <div class="select-label">Ngôn ngữ</div>
         </div>
-      </div>
-    </div>
 
-    <div class="section">
-      <div class="select-card full">
-        <div class="select-icon">📚</div>
-        <select id="subject" class="material-select">
-          <option>Toán</option><option>Lý</option><option>Hóa</option><option>Sinh</option>
-          <option>Sử</option><option>Địa</option><option>Văn</option><option>Anh</option>
-          <option>GDCD</option><option>Tin học</option>
-        </select>
-        <div class="select-label">Môn học</div>
-      </div>
-    </div>
+        <div class="select-card compact full">
+          <select id="subject" class="material-select">
+            <option>📐 Toán</option><option>⚛️ Lý</option><option>🧪 Hóa</option><option>🧬 Sinh</option>
+            <option>📜 Sử</option><option>🌍 Địa</option><option>📝 Văn</option><option>🗣️ Anh</option>
+            <option>⚖️ GDCD</option><option>💻 Tin học</option>
+          </select>
+        </div>
 
-    <div class="section">
-      <div class="select-card full">
-        <div class="select-icon">💡</div>
-        <select id="outputMode" class="material-select">
-          <option value="answer">Chỉ đáp án</option>
-          <option value="explain">Giải thích chi tiết</option>
-          <option value="custom">Tùy chỉnh...</option>
-        </select>
-        <div class="select-label">Chế độ trả lời</div>
+        <div class="select-card compact full">
+          <select id="outputMode" class="material-select">
+            <option value="answer">💡 Chỉ đáp án</option>
+            <option value="explain">📚 Chi tiết</option>
+            <option value="custom">⚙️ Tùy chỉnh</option>
+          </select>
+        </div>
       </div>
     </div>
 
     <div id="customPromptSection" class="section" style="display:none;">
-      <div class="input-field">
-        <textarea id="customPromptInput" rows="3" placeholder=" "></textarea>
+      <div class="input-field compact">
+        <textarea id="customPromptInput" rows="2" placeholder=" "></textarea>
         <label>Yêu cầu tùy chỉnh</label>
-        <div class="input-line"></div>
       </div>
     </div>
 
     <div class="action-buttons">
-      <button id="btnShot" class="btn btn-primary" disabled>
+      <button id="btnShot" class="btn btn-primary btn-compact" disabled>
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="2" width="20" height="20" rx="2" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/>
+          <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/>
         </svg>
-        <span>Kéo vùng</span>
+        Kéo vùng
       </button>
-      <button id="btnFullPage" class="btn btn-primary" disabled>
+      <button id="btnFullPage" class="btn btn-primary btn-compact" disabled>
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" stroke-width="2"/>
         </svg>
-        <span>Toàn trang</span>
+        Toàn trang
       </button>
     </div>
 
-    <button id="btnToggleTextMode" class="btn btn-secondary full-width" disabled>
+    <button id="btnToggleTextMode" class="btn btn-secondary btn-compact full-width" disabled>
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25Z" fill="currentColor"/>
-        <path d="M20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z" fill="currentColor"/>
       </svg>
-      <span>Nhập câu hỏi</span>
+      Nhập câu hỏi
     </button>
 
     <div id="textInputSection" class="section" style="display: none;">
-      <div class="input-field">
-        <textarea id="textQuestionInput" rows="3" placeholder=" "></textarea>
+      <div class="input-field compact">
+        <textarea id="textQuestionInput" rows="2" placeholder=" "></textarea>
         <label>Câu hỏi của bạn</label>
-        <div class="input-line"></div>
       </div>
-      <button id="btnSendTextQuestion" class="btn btn-primary full-width">
+      <button id="btnSendTextQuestion" class="btn btn-primary btn-compact full-width">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
         </svg>
-        <span>Gửi câu hỏi</span>
+        Gửi
       </button>
     </div>
 
     <div class="result-section">
-      <div class="result-card" id="imgCard" style="display:none;">
-        <div class="card-header">
+      <div class="result-card compact" id="imgCard" style="display:none;">
+        <div class="card-header compact">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
             <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
             <path d="M21 15L16 10L5 21" stroke="currentColor" stroke-width="2"/>
           </svg>
-          <span>Ảnh đã chụp</span>
+          Ảnh
         </div>
-        <div class="card-content" id="imgBox"></div>
+        <div class="card-content compact" id="imgBox"></div>
       </div>
 
-      <div class="result-card">
-        <div class="card-header">
+      <div class="result-card compact">
+        <div class="card-header compact">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" fill="none"/>
             <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" fill="none"/>
-            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
-          <span>Đáp án AI</span>
+          Đáp án
+          <button class="btn-copy" id="btnCopy" style="display:none;" title="Copy đáp án">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M5 15H4C2.89543 15 2 14.1046 2 13V4C2 2.89543 2.89543 2 4 2H13C14.1046 2 15 2.89543 15 4V5" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </button>
         </div>
-        <div class="card-content" id="ansBox">
-          <div class="empty-state">
+        <div class="card-content compact" id="ansBox">
+          <div class="empty-state compact">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
               <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
-            <p>Chờ câu hỏi của bạn...</p>
+            <p>Chờ câu hỏi...</p>
           </div>
         </div>
       </div>
     </div>
   </div>
+  <div class="resize-handle" id="resizeHandle"></div>
 `;
 document.body.appendChild(ui);
 
@@ -229,18 +216,205 @@ const outputModeSelect = document.getElementById('outputMode');
 const customPromptSection = document.getElementById('customPromptSection');
 const customPromptInput = document.getElementById('customPromptInput');
 const btnDevilMode = document.getElementById('btnDevilMode');
-const devilStatus = document.getElementById('devilStatus');
+const btnMinimize = document.getElementById('btnMinimize');
+const btnResize = document.getElementById('btnResize');
+const btnCopy = document.getElementById('btnCopy');
+const resizeHandle = document.getElementById('resizeHandle');
+const aiContent = document.getElementById('aiContent');
 const allActionButtons = [btnShot, btnFullPage, btnToggleTextMode];
 
-let currentRequest = null; // Lưu request hiện tại để có thể cancel
+let currentRequest = null;
+let isMinimized = false;
+let currentAnswerText = '';
+
+// === Copy functionality ===
+btnCopy.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  
+  if (!currentAnswerText) return;
+  
+  try {
+    await navigator.clipboard.writeText(currentAnswerText);
+    
+    // Visual feedback
+    const originalHTML = btnCopy.innerHTML;
+    btnCopy.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+    btnCopy.style.background = 'rgba(52, 168, 83, 0.2)';
+    btnCopy.style.color = '#81c995';
+    
+    setTimeout(() => {
+      btnCopy.innerHTML = originalHTML;
+      btnCopy.style.background = '';
+      btnCopy.style.color = '';
+    }, 1500);
+  } catch (err) {
+    console.error('Copy failed:', err);
+    alert('⚠️ Không thể copy. Vui lòng chọn và copy thủ công.');
+  }
+});
+
+// === Resize Functionality - IMPROVED ===
+let isResizing = false;
+let resizeType = 'none'; // none, corner, right, bottom
+let startResizeX, startResizeY, startWidth, startHeight;
+
+// Load saved size
+const savedWidth = GM_getValue('panelWidth', 280);
+const savedHeight = GM_getValue('panelHeight', 'auto');
+
+ui.style.width = savedWidth + 'px';
+if (savedHeight !== 'auto') {
+  ui.style.height = savedHeight + 'px';
+  aiContent.style.maxHeight = (savedHeight - 100) + 'px';
+}
+
+btnResize.addEventListener('click', (e) => {
+  e.stopPropagation();
+  
+  const currentWidth = parseInt(ui.style.width);
+  
+  if (currentWidth <= 280) {
+    ui.style.width = '450px';
+    btnResize.textContent = '⇱';
+  } else if (currentWidth <= 450) {
+    ui.style.width = '650px';
+    btnResize.textContent = '⇱';
+  } else {
+    ui.style.width = '280px';
+    btnResize.textContent = '⇲';
+  }
+  
+  GM_setValue('panelWidth', parseInt(ui.style.width));
+});
+
+// Enhanced resize handle with multiple resize zones
+resizeHandle.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  isResizing = true;
+  resizeType = 'corner';
+  startResizeX = e.clientX;
+  startResizeY = e.clientY;
+  startWidth = ui.offsetWidth;
+  startHeight = ui.offsetHeight;
+  ui.classList.add('resizing');
+  document.body.style.cursor = 'nwse-resize';
+});
+
+// Add right edge resize
+ui.addEventListener('mousedown', (e) => {
+  const rect = ui.getBoundingClientRect();
+  const isRightEdge = e.clientX > rect.right - 8 && e.clientX < rect.right;
+  const isBottomEdge = e.clientY > rect.bottom - 8 && e.clientY < rect.bottom;
+  const isHeader = e.target.closest('.ai-header');
+  
+  if (isHeader) return;
+  
+  if (isRightEdge && !isBottomEdge) {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    resizeType = 'right';
+    startResizeX = e.clientX;
+    startWidth = ui.offsetWidth;
+    ui.classList.add('resizing');
+    document.body.style.cursor = 'ew-resize';
+  } else if (isBottomEdge && !isRightEdge) {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    resizeType = 'bottom';
+    startResizeY = e.clientY;
+    startHeight = ui.offsetHeight;
+    ui.classList.add('resizing');
+    document.body.style.cursor = 'ns-resize';
+  }
+});
+
+// Update mousemove cursor feedback
+ui.addEventListener('mousemove', (e) => {
+  if (isResizing) return;
+  
+  const rect = ui.getBoundingClientRect();
+  const isRightEdge = e.clientX > rect.right - 8 && e.clientX < rect.right;
+  const isBottomEdge = e.clientY > rect.bottom - 8 && e.clientY < rect.bottom;
+  const isCorner = isRightEdge && isBottomEdge;
+  const isHeader = e.target.closest('.ai-header');
+  
+  if (isHeader) {
+    ui.style.cursor = 'move';
+  } else if (isCorner) {
+    ui.style.cursor = 'nwse-resize';
+  } else if (isRightEdge) {
+    ui.style.cursor = 'ew-resize';
+  } else if (isBottomEdge) {
+    ui.style.cursor = 'ns-resize';
+  } else {
+    ui.style.cursor = 'default';
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isResizing) {
+    if (resizeType === 'corner') {
+      const newWidth = Math.max(280, Math.min(1000, startWidth + (e.clientX - startResizeX)));
+      const newHeight = Math.max(300, Math.min(window.innerHeight - 40, startHeight + (e.clientY - startResizeY)));
+      
+      ui.style.width = newWidth + 'px';
+      ui.style.height = newHeight + 'px';
+      aiContent.style.maxHeight = (newHeight - 100) + 'px';
+      
+      GM_setValue('panelWidth', newWidth);
+      GM_setValue('panelHeight', newHeight);
+    } else if (resizeType === 'right') {
+      const newWidth = Math.max(280, Math.min(1000, startWidth + (e.clientX - startResizeX)));
+      ui.style.width = newWidth + 'px';
+      GM_setValue('panelWidth', newWidth);
+    } else if (resizeType === 'bottom') {
+      const newHeight = Math.max(300, Math.min(window.innerHeight - 40, startHeight + (e.clientY - startResizeY)));
+      ui.style.height = newHeight + 'px';
+      aiContent.style.maxHeight = (newHeight - 100) + 'px';
+      GM_setValue('panelHeight', newHeight);
+    }
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    resizeType = 'none';
+    ui.classList.remove('resizing');
+    document.body.style.cursor = '';
+  }
+});
+
+// === Minimize Toggle ===
+btnMinimize.addEventListener('click', (e) => {
+  e.stopPropagation();
+  isMinimized = !isMinimized;
+  
+  if (isMinimized) {
+    aiContent.style.maxHeight = '0';
+    aiContent.style.opacity = '0';
+    btnMinimize.textContent = '+';
+    ui.style.width = '200px';
+  } else {
+    aiContent.style.maxHeight = '600px';
+    aiContent.style.opacity = '1';
+    btnMinimize.textContent = '−';
+    ui.style.width = '280px';
+  }
+});
 
 // === Devil Mode Toggle ===
 btnDevilMode.addEventListener('click', () => {
   DEVIL_MODE = !DEVIL_MODE;
   btnDevilMode.classList.toggle('active', DEVIL_MODE);
-  devilStatus.textContent = DEVIL_MODE ? 'BẬT' : 'TẮT';
-
-  // Visual feedback
+  
   if (DEVIL_MODE) {
     ui.classList.add('devil-active');
   } else {
@@ -255,35 +429,32 @@ function sendToGemini(prompt, base64Image = null) {
     const imgBox = document.getElementById('imgBox');
     const imgCard = document.getElementById('imgCard');
 
-    // Thêm Devil Prompt nếu đang bật
     if (DEVIL_MODE) {
       prompt = DEVIL_PROMPT + "\n\n" + prompt;
     }
 
-    // Thêm hướng dẫn không trả lời bừa
     prompt += "\n\nLƯU Ý QUAN TRỌNG: Nếu bạn không thể trả lời câu hỏi (do thiếu thông tin, không rõ ràng, hoặc nằm ngoài khả năng), hãy thẳng thắn nói 'Tôi không thể trả lời câu hỏi này' và giải thích lý do. KHÔNG bịa đặt hoặc đoán mò thông tin.";
 
     ansBox.innerHTML = `
-      <div class="loading-state">
-        <div class="spinner"></div>
-        <p>Đang xử lý với Gemini...</p>
-        <button id="btnCancelRequest" class="btn-cancel">Hủy</button>
+      <div class="loading-state compact">
+        <div class="spinner small"></div>
+        <p>Đang xử lý...</p>
+        <button id="btnCancelRequest" class="btn-cancel small">Hủy</button>
       </div>
     `;
 
-    // Thêm event listener cho nút cancel
     const btnCancel = document.getElementById('btnCancelRequest');
     if (btnCancel) {
       btnCancel.onclick = () => {
         if (currentRequest) {
           currentRequest.abort();
           ansBox.innerHTML = `
-            <div class="empty-state">
+            <div class="empty-state compact">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
                 <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
-              <p>Đã hủy yêu cầu</p>
+              <p>Đã hủy</p>
             </div>
           `;
           currentRequest = null;
@@ -318,14 +489,13 @@ function sendToGemini(prompt, base64Image = null) {
           typeEffect(ansBox, result.trim());
         } catch (err) {
           ansBox.innerHTML = `
-            <div class="error-state">
+            <div class="error-state compact">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
                 <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 <circle cx="12" cy="16" r="1" fill="currentColor"/>
               </svg>
-              <h4>Lỗi API</h4>
-              <p>${err.message || "Kiểm tra Console để biết thêm chi tiết"}</p>
+              <p>${err.message || "Lỗi API"}</p>
             </div>
           `;
           console.error("Lỗi Gemini:", r.responseText);
@@ -334,12 +504,11 @@ function sendToGemini(prompt, base64Image = null) {
       onerror: err => {
         currentRequest = null;
         ansBox.innerHTML = `
-          <div class="error-state">
+          <div class="error-state compact">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
-            <h4>Lỗi kết nối</h4>
-            <p>${JSON.stringify(err)}</p>
+            <p>Lỗi kết nối</p>
           </div>
         `;
       },
@@ -351,7 +520,7 @@ function sendToGemini(prompt, base64Image = null) {
 
 // === Hàm tạo Prompt ===
 function createPrompt(isImage = true) {
-    const subj = document.getElementById('subject').value;
+    const subj = document.getElementById('subject').value.replace(/[^\w\s]/gi, '');
     const lang = document.getElementById('lang').value;
     const mode = document.getElementById('outputMode').value;
     const langStr = lang === 'vi' ? 'Tiếng Việt' : 'English';
@@ -361,8 +530,8 @@ function createPrompt(isImage = true) {
         const customText = customPromptInput.value.trim();
         if (!customText) {
              document.getElementById('ansBox').innerHTML = `
-               <div class="error-state">
-                 <p>Vui lòng nhập yêu cầu tùy chỉnh</p>
+               <div class="error-state compact">
+                 <p>Vui lòng nhập yêu cầu</p>
                </div>
              `;
             return null;
@@ -381,7 +550,7 @@ function checkApiKey(key) {
   const statusText = aiStatus.querySelector('.status-text');
 
   if (!key) {
-    statusText.textContent = 'Chưa có API Key';
+    statusText.textContent = 'Chưa có Key';
     aiStatus.className = 'status-chip status-error';
     allActionButtons.forEach(b => b.disabled = true);
     apiKeySection.style.display = 'block';
@@ -389,7 +558,7 @@ function checkApiKey(key) {
     return;
   }
 
-  statusText.textContent = 'Đang kiểm tra...';
+  statusText.textContent = 'Kiểm tra...';
   aiStatus.className = 'status-chip status-checking';
   allActionButtons.forEach(b => b.disabled = true);
 
@@ -403,7 +572,7 @@ function checkApiKey(key) {
         const data = JSON.parse(response.responseText || "{}");
 
         if (response.status === 200 && data?.candidates) {
-          statusText.textContent = 'Đã kết nối';
+          statusText.textContent = 'Kết nối';
           aiStatus.className = 'status-chip status-success';
           GEMINI_API_KEY = key;
           GM_setValue('geminiApiKey', key);
@@ -417,15 +586,15 @@ function checkApiKey(key) {
         const errCode = data?.error?.code || response.status;
 
         if (errCode === 400 && errMsg.includes("API key not valid")) {
-          throw new Error("API key không hợp lệ");
+          throw new Error("Key không hợp lệ");
         } else if (errCode === 403) {
-          throw new Error("Không có quyền truy cập");
+          throw new Error("Không có quyền");
         } else if (errCode === 429) {
-          throw new Error("Vượt quá giới hạn");
+          throw new Error("Vượt giới hạn");
         } else if (errCode >= 500) {
           throw new Error("Lỗi máy chủ");
         } else {
-          throw new Error(errMsg || "Lỗi không xác định");
+          throw new Error(errMsg || "Lỗi không rõ");
         }
       } catch (e) {
         statusText.textContent = e.message;
@@ -453,14 +622,13 @@ async function handleScreenshot(options = {}) {
 
   imgCard.style.display = 'block';
   imgBox.innerHTML = `
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p>Đang chụp ảnh...</p>
-      <button id="btnCancelCapture" class="btn-cancel">Hủy</button>
+    <div class="loading-state compact">
+      <div class="spinner small"></div>
+      <p>Đang chụp...</p>
+      <button id="btnCancelCapture" class="btn-cancel small">Hủy</button>
     </div>
   `;
 
-  // Biến để track việc hủy
   let cancelled = false;
   const btnCancelCapture = document.getElementById('btnCancelCapture');
   if (btnCancelCapture) {
@@ -468,69 +636,79 @@ async function handleScreenshot(options = {}) {
       cancelled = true;
       imgCard.style.display = 'none';
       ansBox.innerHTML = `
-        <div class="empty-state">
+        <div class="empty-state compact">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
             <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
-          <p>Đã hủy chụp ảnh</p>
+          <p>Đã hủy</p>
         </div>
       `;
     };
   }
 
   ansBox.innerHTML = `
-    <div class="empty-state">
+    <div class="empty-state compact">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
         <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      <p>Đang chuẩn bị...</p>
+      <p>Chuẩn bị...</p>
     </div>
   `;
 
   try {
-    if (!options.x && !options.y) {
-       window.scrollTo(0, 0);
+    // Thêm scroll offset cho tọa độ chính xác
+    let captureOptions = { ...options };
+    
+    if (options.x !== undefined && options.y !== undefined) {
+      // Điều chỉnh tọa độ theo scroll position
+      captureOptions.x = options.x + window.pageXOffset;
+      captureOptions.y = options.y + window.pageYOffset;
+    } else {
+      // Nếu chụp toàn trang, scroll về đầu
+      window.scrollTo(0, 0);
+      // Đợi scroll hoàn tất
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // FIX: Thêm ignoreElements để bỏ qua UI panel và overlay
     const canvas = await html2canvas(document.body, {
-      ...options,
+      ...captureOptions,
       scale: 1.5,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: document.documentElement.scrollWidth,
+      windowHeight: document.documentElement.scrollHeight,
       ignoreElements: (element) => {
-        // Bỏ qua panel AI và overlay
         return element.id === 'aiPanel' ||
                element.id === 'aiSnipOverlay' ||
                element.id === 'aiSnipBox' ||
+               element.id === 'sizeIndicator' ||
+               element.id === 'captureGuide' ||
                element.classList.contains('ai-screenshot-ignore');
       },
       onclone: (clonedDoc) => {
-        // Fix lỗi oklch và các màu không hỗ trợ
         const allElements = clonedDoc.querySelectorAll('*');
         allElements.forEach(el => {
           const computedStyle = window.getComputedStyle(el);
-          // Convert oklch và các color function không hỗ trợ sang rgb
           ['color', 'backgroundColor', 'borderColor'].forEach(prop => {
             const value = computedStyle[prop];
             if (value && (value.includes('oklch') || value.includes('lab') || value.includes('lch'))) {
-              el.style[prop] = 'rgb(128, 128, 128)'; // fallback color
+              el.style[prop] = 'rgb(128, 128, 128)';
             }
           });
         });
       }
     });
 
-    // Kiểm tra nếu đã hủy
     if (cancelled) return;
 
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     imgBox.innerHTML = `<img src="${canvas.toDataURL()}" style="cursor: pointer;" id="capturedImage">`;
 
-    // Thêm khả năng xem ảnh to hơn
     const capturedImg = document.getElementById('capturedImage');
     if (capturedImg) {
       capturedImg.onclick = () => {
@@ -557,9 +735,8 @@ async function handleScreenshot(options = {}) {
   } catch (err) {
     if (cancelled) return;
     imgBox.innerHTML = `
-      <div class="error-state">
-        <h4>Lỗi chụp ảnh</h4>
-        <p>${err.message}</p>
+      <div class="error-state compact">
+        <p>Lỗi: ${err.message}</p>
       </div>
     `;
     ansBox.innerHTML = '';
@@ -575,7 +752,7 @@ changeApiBtn.addEventListener('click', () => {
   apiKeyInput.focus();
   allActionButtons.forEach(b => b.disabled = true);
   const statusText = aiStatus.querySelector('.status-text');
-  statusText.textContent = "Nhập key mới";
+  statusText.textContent = "Nhập key";
   aiStatus.className = 'status-chip status-checking';
 });
 
@@ -592,8 +769,8 @@ btnSendTextQuestion.addEventListener('click', () => {
     const question = textQuestionInput.value.trim();
     if (!question) {
         document.getElementById('ansBox').innerHTML = `
-          <div class="error-state">
-            <p>Vui lòng nhập câu hỏi</p>
+          <div class="error-state compact">
+            <p>Nhập câu hỏi</p>
           </div>
         `;
         return;
@@ -606,116 +783,189 @@ btnSendTextQuestion.addEventListener('click', () => {
     }
 });
 
-// === CSS Material Design ===
+// === CSS Material Design - COMPACT VERSION ===
 GM_addStyle(`
-@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+* {
+  box-sizing: border-box;
+}
 
 #aiPanel {
   position: fixed;
   top: 20px;
-  left: 20px;
-  width: 340px;
-  background: #1e1e1e;
-  color: #e8eaed;
+  right: 20px;
+  width: 280px;
+  background: #1a1a1a;
+  color: #e4e4e7;
   z-index: 999999;
-  border-radius: 12px;
-  font-family: 'Google Sans', 'Roboto', sans-serif;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
+  border-radius: 10px;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
   display: none;
-  cursor: move;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+#aiPanel.dragging {
+  transition: none;
+  cursor: grabbing !important;
 }
 
 #aiPanel.devil-active {
-  box-shadow: 0 4px 24px rgba(220, 38, 38, 0.4), 0 0 0 2px rgba(220, 38, 38, 0.3);
+  box-shadow: 0 8px 32px rgba(220, 38, 38, 0.4), 0 0 0 2px rgba(220, 38, 38, 0.3);
 }
 
 .ai-header {
   background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
-  padding: 16px;
-  border-radius: 12px 12px 0 0;
-  position: relative;
-  overflow: hidden;
+  padding: 10px 12px;
+  border-radius: 10px 10px 0 0;
+  cursor: move;
+  user-select: none;
+  transition: background 0.3s ease;
+}
+
+#aiPanel.dragging .ai-header {
+  background: linear-gradient(135deg, #1557b0 0%, #2a6dd4 100%);
 }
 
 #aiPanel.devil-active .ai-header {
   background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);
 }
 
-.ai-header::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  animation: headerGlow 15s infinite;
-}
-
-@keyframes headerGlow {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(-30%, -30%); }
-}
-
 .header-content {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   position: relative;
-  z-index: 1;
 }
 
 .logo-icon {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   color: #fff;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  flex-shrink: 0;
+}
+
+.header-text {
+  flex: 1;
 }
 
 .header-text h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: #fff;
-  letter-spacing: 0.2px;
+  letter-spacing: -0.2px;
 }
 
-.header-text .subtitle {
-  margin: 0;
-  font-size: 11px;
-  color: rgba(255,255,255,0.7);
-  font-weight: 400;
+.btn-minimize {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-minimize:hover {
+  background: rgba(255,255,255,0.25);
+  transform: scale(1.05);
+}
+
+.btn-resize {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.btn-resize:hover {
+  background: rgba(255,255,255,0.25);
+  transform: scale(1.05);
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  z-index: 10;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid rgba(255,255,255,0.3);
+  border-bottom: 2px solid rgba(255,255,255,0.3);
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover::after,
+#aiPanel.resizing .resize-handle::after {
+  border-color: rgba(66, 133, 244, 0.6);
+  width: 14px;
+  height: 14px;
+}
+
+#aiPanel.resizing {
+  transition: none;
+  user-select: none;
+}
+
+#aiPanel.resizing * {
+  cursor: inherit !important;
 }
 
 .status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 4px 10px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 12px;
-  font-size: 11px;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 10px;
+  font-size: 10px;
   font-weight: 500;
-  backdrop-filter: blur(10px);
-  position: relative;
-  z-index: 1;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #fff;
   animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .status-chip.status-success {
@@ -725,7 +975,7 @@ GM_addStyle(`
 
 .status-chip.status-success .status-dot {
   background: #81c995;
-  box-shadow: 0 0 6px #81c995;
+  box-shadow: 0 0 4px #81c995;
 }
 
 .status-chip.status-error {
@@ -743,18 +993,17 @@ GM_addStyle(`
   color: #fdd663;
 }
 
-.status-chip.status-checking .status-dot {
-  background: #fdd663;
-}
-
 .ai-content {
-  padding: 16px;
-  max-height: calc(100vh - 140px);
+  padding: 10px;
+  max-height: 600px;
   overflow-y: auto;
+  overflow-x: hidden;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ai-content::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 
 .ai-content::-webkit-scrollbar-track {
@@ -771,98 +1020,71 @@ GM_addStyle(`
 }
 
 .section {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
-/* ===== DEVIL MODE BUTTON ===== */
 .devil-mode-section {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
-.btn-devil {
+.btn-devil.compact {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: rgba(255,255,255,0.05);
-  border: 2px solid rgba(255,255,255,0.1);
-  border-radius: 10px;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: 'Google Sans', sans-serif;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
 }
 
-.btn-devil:hover {
+.btn-devil.compact:hover {
   background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.2);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  border-color: rgba(255,255,255,0.15);
 }
 
 .btn-devil.active {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.2), rgba(127, 29, 29, 0.2));
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15), rgba(127, 29, 29, 0.15));
   border-color: #dc2626;
-  box-shadow: 0 0 20px rgba(220, 38, 38, 0.3), inset 0 0 20px rgba(220, 38, 38, 0.1);
+  box-shadow: 0 0 12px rgba(220, 38, 38, 0.2);
 }
 
 .devil-icon {
-  font-size: 24px;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-  animation: devilFloat 3s ease-in-out infinite;
-}
-
-@keyframes devilFloat {
-  0%, 100% { transform: translateY(0) rotate(-5deg); }
-  50% { transform: translateY(-3px) rotate(5deg); }
-}
-
-.btn-devil.active .devil-icon {
-  animation: devilActive 0.5s ease-in-out infinite;
-}
-
-@keyframes devilActive {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  25% { transform: scale(1.1) rotate(-10deg); }
-  75% { transform: scale(1.1) rotate(10deg); }
+  font-size: 20px;
+  flex-shrink: 0;
 }
 
 .devil-text {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: left;
+  align-items: center;
 }
 
 .devil-title {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
-  color: #e8eaed;
+  color: #e4e4e7;
 }
 
-.devil-status {
-  font-size: 11px;
-  color: #9aa0a6;
-  font-weight: 400;
-}
-
-.btn-devil.active .devil-status {
+.btn-devil.active .devil-title {
   color: #fca5a5;
-  font-weight: 500;
 }
 
 .devil-toggle {
   position: relative;
+  flex-shrink: 0;
 }
 
 .devil-toggle-track {
-  width: 40px;
-  height: 20px;
+  width: 32px;
+  height: 16px;
   background: rgba(255,255,255,0.2);
-  border-radius: 10px;
+  border-radius: 8px;
   position: relative;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
 }
 
 .btn-devil.active .devil-toggle-track {
@@ -870,67 +1092,55 @@ GM_addStyle(`
 }
 
 .devil-toggle-thumb {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   background: #fff;
   border-radius: 50%;
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .btn-devil.active .devil-toggle-thumb {
-  left: 22px;
-  background: #fee;
-  box-shadow: 0 0 8px rgba(220, 38, 38, 0.5);
+  left: 18px;
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.4);
 }
 
-/* ===== SELECT CARDS ===== */
-.select-row {
+.select-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
 }
 
-.select-card {
+.select-card.compact {
   position: relative;
   background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 10px 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 0;
+  transition: all 0.2s ease;
+  overflow: hidden;
 }
 
-.select-card:hover {
+.select-card.compact:hover {
   background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.15);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border-color: rgba(255,255,255,0.12);
 }
 
-.select-card.full {
+.select-card.compact.full {
   grid-column: 1 / -1;
-}
-
-.select-icon {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  font-size: 16px;
-  pointer-events: none;
-  z-index: 1;
 }
 
 .material-select {
   width: 100%;
-  padding: 8px 10px 8px 36px;
+  padding: 8px 10px;
   border: none;
   background: transparent;
-  color: #e8eaed;
-  font-size: 13px;
-  font-family: 'Roboto', sans-serif;
+  color: #e4e4e7;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
   cursor: pointer;
   appearance: none;
   font-weight: 500;
@@ -938,108 +1148,78 @@ GM_addStyle(`
 }
 
 .material-select option {
-  background: #2d2d2d;
-  color: #e8eaed;
-  padding: 8px;
+  background: #2a2a2a;
+  color: #e4e4e7;
+  padding: 6px;
 }
 
-.select-label {
-  font-size: 10px;
-  color: #9aa0a6;
-  margin-top: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
-}
-
-.input-field {
+.input-field.compact {
   position: relative;
   margin-bottom: 4px;
 }
 
-.input-field input,
-.input-field textarea {
+.input-field.compact input,
+.input-field.compact textarea {
   width: 100%;
-  box-sizing: border-box;
-  padding: 10px 10px 6px;
-  border: none;
-  border-radius: 8px 8px 0 0;
-  background: rgba(255,255,255,0.05);
-  color: #e8eaed;
-  font-size: 13px;
-  font-family: 'Roboto', sans-serif;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.input-field textarea {
-  resize: vertical;
-  min-height: 50px;
-}
-
-.input-field input:focus,
-.input-field textarea:focus {
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: #e4e4e7;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
   outline: none;
-  background: rgba(255,255,255,0.08);
 }
 
-.input-field input:focus + label,
-.input-field textarea:focus + label,
-.input-field input:not(:placeholder-shown) + label,
-.input-field textarea:not(:placeholder-shown) + label {
-  transform: translateY(-18px) scale(0.85);
-  color: #8ab4f8;
+.input-field.compact textarea {
+  resize: vertical;
+  min-height: 40px;
 }
 
-.input-field label {
+.input-field.compact input:focus,
+.input-field.compact textarea:focus {
+  background: rgba(255,255,255,0.06);
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
+}
+
+.input-field.compact input:focus + label,
+.input-field.compact textarea:focus + label,
+.input-field.compact input:not(:placeholder-shown) + label,
+.input-field.compact textarea:not(:placeholder-shown) + label {
+  transform: translateY(-20px) scale(0.85);
+  color: #4285f4;
+}
+
+.input-field.compact label {
   position: absolute;
   left: 10px;
-  top: 10px;
-  font-size: 13px;
-  color: #9aa0a6;
+  top: 8px;
+  font-size: 12px;
+  color: #71717a;
   pointer-events: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   transform-origin: left top;
-}
-
-.input-line {
-  height: 2px;
-  background: rgba(255,255,255,0.1);
-  position: relative;
-  overflow: hidden;
-}
-
-.input-line::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #8ab4f8, #4285f4);
-  transform: scaleX(0);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.input-field input:focus ~ .input-line::after,
-.input-field textarea:focus ~ .input-line::after {
-  transform: scaleX(1);
+  background: #1a1a1a;
+  padding: 0 4px;
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 18px;
+  gap: 5px;
+  padding: 8px 14px;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
-  font-family: 'Google Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
-  letter-spacing: 0.3px;
 }
 
 .btn::before {
@@ -1050,21 +1230,22 @@ GM_addStyle(`
   width: 0;
   height: 0;
   border-radius: 50%;
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.15);
   transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
+  transition: width 0.4s, height 0.4s;
 }
 
 .btn:active::before {
-  width: 300px;
-  height: 300px;
+  width: 200px;
+  height: 200px;
 }
 
 .btn svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
 }
 
 .btn span {
@@ -1072,32 +1253,42 @@ GM_addStyle(`
   z-index: 1;
 }
 
+.btn-compact {
+  padding: 7px 12px;
+  font-size: 11px;
+}
+
+.btn-small {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #1a73e8, #4285f4);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+  box-shadow: 0 1px 3px rgba(26, 115, 232, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.4);
   transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.06);
   color: #8ab4f8;
-  border: 1px solid rgba(138, 180, 248, 0.3);
+  border: 1px solid rgba(138, 180, 248, 0.2);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255,255,255,0.12);
-  border-color: rgba(138, 180, 248, 0.5);
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(138, 180, 248, 0.4);
 }
 
 .btn-text {
   background: transparent;
   color: #8ab4f8;
-  padding: 6px 12px;
+  padding: 5px 10px;
 }
 
 .btn-text:hover:not(:disabled) {
@@ -1108,7 +1299,6 @@ GM_addStyle(`
   opacity: 0.4;
   cursor: not-allowed;
   transform: none !important;
-  box-shadow: none !important;
 }
 
 .btn.full-width {
@@ -1118,148 +1308,185 @@ GM_addStyle(`
 .action-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .result-section {
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
-.result-card {
+.result-card.compact {
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  margin-bottom: 8px;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.result-card:hover {
-  border-color: rgba(255,255,255,0.12);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-
-.card-header {
+.card-header.compact {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: rgba(255,255,255,0.05);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   font-weight: 500;
-  font-size: 12px;
-  color: #9aa0a6;
+  font-size: 11px;
+  color: #71717a;
+  position: relative;
 }
 
-.card-header svg {
-  width: 18px;
-  height: 18px;
+.card-header.compact svg {
+  width: 14px;
+  height: 14px;
+  color: #8ab4f8;
+  flex-shrink: 0;
+}
+
+.btn-copy {
+  margin-left: auto;
+  background: rgba(255,255,255,0.08);
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
   color: #8ab4f8;
 }
 
-.card-content {
-  padding: 12px;
-  min-height: 50px;
-  font-size: 13px;
+.btn-copy:hover {
+  background: rgba(138, 180, 248, 0.15);
+  transform: scale(1.05);
+}
+
+.btn-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card-content.compact {
+  padding: 10px;
+  min-height: 40px;
+  font-size: 12px;
   line-height: 1.6;
-  color: #e8eaed;
-  font-family: 'Roboto', sans-serif;
+  color: #e4e4e7;
+  font-family: 'Inter', sans-serif;
+  max-height: 500px;
+  overflow-y: auto;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
-.card-content img {
+.card-content.compact::-webkit-scrollbar {
+  width: 4px;
+}
+
+.card-content.compact::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+  border-radius: 2px;
+}
+
+.card-content.compact::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+
+.card-content.compact::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+.card-content.compact img {
   max-width: 100%;
-  border-radius: 6px;
-  margin-top: 6px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  border-radius: 4px;
+  margin-top: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
 }
 
-.card-content img:hover {
-  transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+.card-content.compact img:hover {
+  transform: scale(1.01);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
-.empty-state,
-.loading-state,
-.error-state {
+.empty-state.compact,
+.loading-state.compact,
+.error-state.compact {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px 12px;
+  padding: 16px 10px;
   text-align: center;
 }
 
-.empty-state svg,
-.loading-state svg,
-.error-state svg {
-  width: 40px;
-  height: 40px;
-  margin-bottom: 10px;
-  color: #5f6368;
+.empty-state.compact svg,
+.loading-state.compact svg,
+.error-state.compact svg {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 6px;
+  color: #52525b;
 }
 
-.empty-state p,
-.loading-state p {
+.empty-state.compact p,
+.loading-state.compact p {
   margin: 0;
-  color: #9aa0a6;
-  font-size: 12px;
+  color: #71717a;
+  font-size: 11px;
 }
 
-.error-state {
+.error-state.compact {
   color: #f28b82;
 }
 
-.error-state svg {
+.error-state.compact svg {
   color: #f28b82;
 }
 
-.error-state h4 {
-  margin: 0 0 6px 0;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.error-state p {
+.error-state.compact p {
   margin: 0;
   font-size: 11px;
-  color: #9aa0a6;
+  color: #71717a;
 }
 
-.spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(138, 180, 248, 0.2);
+.spinner.small {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid rgba(138, 180, 248, 0.2);
   border-top-color: #8ab4f8;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 10px;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 6px;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.btn-cancel {
-  margin-top: 12px;
-  padding: 6px 16px;
-  background: rgba(234, 67, 53, 0.15);
-  border: 1px solid rgba(234, 67, 53, 0.3);
-  border-radius: 6px;
+.btn-cancel.small {
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: rgba(234, 67, 53, 0.12);
+  border: 1px solid rgba(234, 67, 53, 0.25);
+  border-radius: 5px;
   color: #f28b82;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: 'Google Sans', sans-serif;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
 }
 
-.btn-cancel:hover {
-  background: rgba(234, 67, 53, 0.25);
-  border-color: rgba(234, 67, 53, 0.5);
-  transform: translateY(-1px);
+.btn-cancel.small:hover {
+  background: rgba(234, 67, 53, 0.2);
+  border-color: rgba(234, 67, 53, 0.4);
 }
 
 #aiSnipOverlay {
@@ -1268,50 +1495,115 @@ GM_addStyle(`
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.75);
-  z-index: 2147483647;
+  background: rgba(0,0,0,0.7);
+  z-index: 2147483646;
   display: none;
   cursor: crosshair;
-  backdrop-filter: blur(1px);
+  backdrop-filter: blur(2px);
 }
 
 #aiSnipBox {
-  position: absolute;
-  border: 3px solid #4285f4;
-  background: rgba(66, 133, 244, 0.1);
-  z-index: 2147483648;
+  position: fixed;
+  border: 2px solid #4285f4;
+  background: rgba(66, 133, 244, 0.08);
+  z-index: 2147483647;
   display: none;
   pointer-events: none;
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,0.5),
-    0 0 0 9999px rgba(0,0,0,0.5),
-    inset 0 0 20px rgba(66, 133, 244, 0.3);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.4),
+              0 0 0 9999px rgba(0,0,0,0.5);
   transition: none;
 }
 
-#aiSnipBox::before {
+#aiSnipBox::after {
   content: '';
   position: absolute;
-  top: -3px;
-  left: -3px;
-  right: -3px;
-  bottom: -3px;
-  border: 3px dashed rgba(255,255,255,0.6);
-  animation: dashMove 20s linear infinite;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed rgba(255,255,255,0.5);
+  pointer-events: none;
 }
 
-@keyframes dashMove {
-  to { stroke-dashoffset: 100; }
+#sizeIndicator {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-family: 'Inter', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 2147483648;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+}
+
+#captureGuide {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.92);
+  color: #fff;
+  padding: 16px 24px;
+  border-radius: 10px;
+  z-index: 2147483648;
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -45%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+#captureGuide h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#captureGuide p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #a1a1aa;
+}
+
+#cancelCaptureMode {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+#cancelCaptureMode:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
 }
 
 @media (max-width: 480px) {
   #aiPanel {
-    width: calc(100vw - 40px);
-    left: 20px;
-    right: 20px;
+    width: calc(100vw - 32px);
+    left: 16px;
+    right: 16px;
   }
 
-  .select-row {
+  .select-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1338,42 +1630,28 @@ btnShot.onclick = () => {
   snipBox.style.display = 'none';
   ui.style.display = 'none';
 
-  // Hiển thị hướng dẫn
   const guide = document.createElement('div');
   guide.id = 'captureGuide';
   guide.innerHTML = `
-    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                background: rgba(0,0,0,0.9); color: #fff; padding: 20px 30px;
-                border-radius: 12px; z-index: 2147483649; text-align: center;
-                font-family: 'Google Sans', sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-      <h3 style="margin: 0 0 10px 0; font-size: 18px;">📸 Chế độ chụp vùng</h3>
-      <p style="margin: 0 0 15px 0; font-size: 14px; color: #aaa;">
-        Nhấn và kéo chuột để chọn vùng cần chụp
-      </p>
-      <button id="cancelCaptureMode" style="background: #dc2626; color: #fff; border: none;
-              padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px;
-              font-weight: 500; transition: all 0.3s;">
-        ✕ Hủy (ESC)
-      </button>
-    </div>
+    <h3>📸 Chế độ chụp vùng</h3>
+    <p>Nhấn và kéo chuột để chọn vùng cần chụp</p>
+    <button id="cancelCaptureMode">✕ Hủy (ESC)</button>
   `;
   document.body.appendChild(guide);
 
-  // Xử lý nút hủy
   const cancelBtn = document.getElementById('cancelCaptureMode');
   if (cancelBtn) {
     cancelBtn.onclick = cancelCapture;
   }
 
-  // Tự động ẩn hướng dẫn sau 2 giây
   setTimeout(() => {
     if (guide && guide.parentNode) {
-      guide.remove();
+      guide.style.opacity = '0';
+      setTimeout(() => guide.remove(), 200);
     }
-  }, 2000);
+  }, 2500);
 };
 
-// Hàm hủy capture
 function cancelCapture() {
   selecting = false;
   overlay.style.display = 'none';
@@ -1383,9 +1661,11 @@ function cancelCapture() {
 
   const guide = document.getElementById('captureGuide');
   if (guide) guide.remove();
+  
+  const indicator = document.getElementById('sizeIndicator');
+  if (indicator) indicator.remove();
 }
 
-// Thêm ESC để hủy
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && selecting) {
     cancelCapture();
@@ -1404,62 +1684,53 @@ btnFullPage.onclick = () => {
 overlay.addEventListener('mousedown', e => {
   if (!selecting) return;
 
-  // Ẩn guide nếu còn
   const guide = document.getElementById('captureGuide');
-  if (guide) guide.remove();
+  if (guide) {
+    guide.style.opacity = '0';
+    setTimeout(() => guide.remove(), 200);
+  }
 
-  startX = e.clientX;
-  startY = e.clientY;
-  snipBox.style.left = startX + 'px';
-  snipBox.style.top = startY + 'px';
+  // Lưu tọa độ tương đối với viewport + scroll position
+  startX = e.clientX + window.pageXOffset;
+  startY = e.clientY + window.pageYOffset;
+  
+  // Hiển thị box ở vị trí clientX/Y (viewport coordinates)
+  snipBox.style.left = e.clientX + 'px';
+  snipBox.style.top = e.clientY + 'px';
   snipBox.style.width = '0px';
   snipBox.style.height = '0px';
   snipBox.style.display = 'block';
 
-  // Hiển thị kích thước
   updateSizeIndicator(0, 0);
 });
 
 overlay.addEventListener('mousemove', e => {
   if (!selecting || startX === undefined) return;
-  endX = e.clientX;
-  endY = e.clientY;
+  
+  // Tính tọa độ với scroll
+  endX = e.clientX + window.pageXOffset;
+  endY = e.clientY + window.pageYOffset;
 
+  // Tính vị trí và kích thước
   const left = Math.min(startX, endX);
   const top = Math.min(startY, endY);
   const width = Math.abs(endX - startX);
   const height = Math.abs(endY - startY);
 
-  snipBox.style.left = left + 'px';
-  snipBox.style.top = top + 'px';
+  // Hiển thị box ở viewport coordinates
+  snipBox.style.left = (left - window.pageXOffset) + 'px';
+  snipBox.style.top = (top - window.pageYOffset) + 'px';
   snipBox.style.width = width + 'px';
   snipBox.style.height = height + 'px';
 
   updateSizeIndicator(width, height);
 });
 
-// Hiển thị kích thước đang chọn
 function updateSizeIndicator(width, height) {
   let indicator = document.getElementById('sizeIndicator');
   if (!indicator) {
     indicator = document.createElement('div');
     indicator.id = 'sizeIndicator';
-    indicator.style.cssText = `
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.85);
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-family: 'Roboto', monospace;
-      font-size: 14px;
-      font-weight: 500;
-      z-index: 2147483649;
-      pointer-events: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    `;
     document.body.appendChild(indicator);
   }
   indicator.textContent = `📐 ${Math.round(width)} × ${Math.round(height)} px`;
@@ -1468,6 +1739,7 @@ function updateSizeIndicator(width, height) {
 
 overlay.addEventListener('mouseup', async e => {
   if (!selecting || startX === undefined) return;
+  
   const left = Math.min(startX, endX);
   const top = Math.min(startY, endY);
   const width = Math.abs(endX - startX);
@@ -1479,7 +1751,6 @@ overlay.addEventListener('mouseup', async e => {
   ui.style.display = 'block';
   startX = startY = endX = endY = undefined;
 
-  // Xóa indicator
   const indicator = document.getElementById('sizeIndicator');
   if (indicator) indicator.remove();
 
@@ -1488,44 +1759,58 @@ overlay.addEventListener('mouseup', async e => {
     return;
   }
 
+  // Truyền tọa độ đã tính với scroll offset
   handleScreenshot({ x: left, y: top, width: width, height: height });
 });
 
 // === Hiệu ứng gõ chữ ===
-function typeEffect(el, text, speed = 10) {
+function typeEffect(el, text, speed = 8) {
+  currentAnswerText = text; // Lưu text để copy
+  btnCopy.style.display = 'block'; // Hiện nút copy
+  
   el.innerHTML = "";
   let i = 0;
   function typing() {
     if (i < text.length) {
       el.innerHTML += text.charAt(i++);
+      el.scrollTop = el.scrollHeight; // Auto scroll xuống
       setTimeout(typing, speed);
     }
   }
   typing();
 }
 
-// === Kéo thả panel ===
+// === Kéo thả panel - IMPROVED ===
 let dragging = false, dragOffset = {x:0, y:0};
 const header = ui.querySelector('.ai-header');
 
 header.addEventListener('mousedown', e => {
+  if (e.target.closest('.btn-minimize')) return;
+  
   dragging = true;
   dragOffset.x = e.clientX - ui.offsetLeft;
   dragOffset.y = e.clientY - ui.offsetTop;
-  ui.style.cursor = 'grabbing';
+  ui.classList.add('dragging');
+  e.preventDefault();
 });
 
 document.addEventListener('mousemove', e => {
   if (dragging) {
-    ui.style.left = (e.clientX - dragOffset.x) + 'px';
-    ui.style.top = (e.clientY - dragOffset.y) + 'px';
+    const newLeft = e.clientX - dragOffset.x;
+    const newTop = e.clientY - dragOffset.y;
+    
+    const maxLeft = window.innerWidth - ui.offsetWidth;
+    const maxTop = window.innerHeight - ui.offsetHeight;
+    
+    ui.style.left = Math.max(0, Math.min(newLeft, maxLeft)) + 'px';
+    ui.style.top = Math.max(0, Math.min(newTop, maxTop)) + 'px';
   }
 });
 
 document.addEventListener('mouseup', () => {
   if (dragging) {
     dragging = false;
-    ui.style.cursor = 'move';
+    ui.classList.remove('dragging');
   }
 });
 
