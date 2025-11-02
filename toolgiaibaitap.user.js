@@ -11,6 +11,8 @@
 // @grant        GM_getValue
 // @connect      generativelanguage.googleapis.com
 // @require      https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
+// @downloadURL https://update.greasyfork.org/scripts/552274/AI%20Gi%E1%BA%A3i%20B%C3%A0i%20T%E1%BA%ADp.user.js
+// @updateURL https://update.greasyfork.org/scripts/552274/AI%20Gi%E1%BA%A3i%20B%C3%A0i%20T%E1%BA%ADp.meta.js
 // ==/UserScript==
 
 (async function() {
@@ -491,18 +493,63 @@ async function handleScreenshot(options = {}) {
     if (!options.x && !options.y) {
        window.scrollTo(0, 0);
     }
+
+    // FIX: Thêm ignoreElements để bỏ qua UI panel và overlay
     const canvas = await html2canvas(document.body, {
       ...options,
       scale: 1.5,
       useCORS: true,
-      allowTaint: true
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      ignoreElements: (element) => {
+        // Bỏ qua panel AI và overlay
+        return element.id === 'aiPanel' ||
+               element.id === 'aiSnipOverlay' ||
+               element.id === 'aiSnipBox' ||
+               element.classList.contains('ai-screenshot-ignore');
+      },
+      onclone: (clonedDoc) => {
+        // Fix lỗi oklch và các màu không hỗ trợ
+        const allElements = clonedDoc.querySelectorAll('*');
+        allElements.forEach(el => {
+          const computedStyle = window.getComputedStyle(el);
+          // Convert oklch và các color function không hỗ trợ sang rgb
+          ['color', 'backgroundColor', 'borderColor'].forEach(prop => {
+            const value = computedStyle[prop];
+            if (value && (value.includes('oklch') || value.includes('lab') || value.includes('lch'))) {
+              el.style[prop] = 'rgb(128, 128, 128)'; // fallback color
+            }
+          });
+        });
+      }
     });
 
     // Kiểm tra nếu đã hủy
     if (cancelled) return;
 
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-    imgBox.innerHTML = `<img src="${canvas.toDataURL()}">`;
+    imgBox.innerHTML = `<img src="${canvas.toDataURL()}" style="cursor: pointer;" id="capturedImage">`;
+
+    // Thêm khả năng xem ảnh to hơn
+    const capturedImg = document.getElementById('capturedImage');
+    if (capturedImg) {
+      capturedImg.onclick = () => {
+        const imgWindow = window.open('', '_blank');
+        imgWindow.document.write(`
+          <html>
+            <head>
+              <title>Ảnh đã chụp</title>
+              <style>
+                body { margin: 0; background: #000; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+                img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+              </style>
+            </head>
+            <body><img src="${canvas.toDataURL()}" /></body>
+          </html>
+        `);
+      };
+    }
+
     const prompt = createPrompt(true);
     if (prompt) {
         sendToGemini(prompt, base64);
@@ -1125,6 +1172,13 @@ GM_addStyle(`
   border-radius: 6px;
   margin-top: 6px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-content img:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 .empty-state,
@@ -1188,28 +1242,66 @@ GM_addStyle(`
   to { transform: rotate(360deg); }
 }
 
+.btn-cancel {
+  margin-top: 12px;
+  padding: 6px 16px;
+  background: rgba(234, 67, 53, 0.15);
+  border: 1px solid rgba(234, 67, 53, 0.3);
+  border-radius: 6px;
+  color: #f28b82;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: 'Google Sans', sans-serif;
+}
+
+.btn-cancel:hover {
+  background: rgba(234, 67, 53, 0.25);
+  border-color: rgba(234, 67, 53, 0.5);
+  transform: translateY(-1px);
+}
+
 #aiSnipOverlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.75);
   z-index: 2147483647;
   display: none;
   cursor: crosshair;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(1px);
 }
 
 #aiSnipBox {
   position: absolute;
-  border: 2px solid #8ab4f8;
-  background: rgba(138, 180, 248, 0.15);
+  border: 3px solid #4285f4;
+  background: rgba(66, 133, 244, 0.1);
   z-index: 2147483648;
   display: none;
   pointer-events: none;
-  border-radius: 4px;
-  box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.5),
+    0 0 0 9999px rgba(0,0,0,0.5),
+    inset 0 0 20px rgba(66, 133, 244, 0.3);
+  transition: none;
+}
+
+#aiSnipBox::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border: 3px dashed rgba(255,255,255,0.6);
+  animation: dashMove 20s linear infinite;
+}
+
+@keyframes dashMove {
+  to { stroke-dashoffset: 100; }
 }
 
 @media (max-width: 480px) {
@@ -1243,8 +1335,62 @@ let selecting = false, startX, startY, endX, endY;
 btnShot.onclick = () => {
   selecting = true;
   overlay.style.display = 'block';
+  snipBox.style.display = 'none';
   ui.style.display = 'none';
+
+  // Hiển thị hướng dẫn
+  const guide = document.createElement('div');
+  guide.id = 'captureGuide';
+  guide.innerHTML = `
+    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.9); color: #fff; padding: 20px 30px;
+                border-radius: 12px; z-index: 2147483649; text-align: center;
+                font-family: 'Google Sans', sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+      <h3 style="margin: 0 0 10px 0; font-size: 18px;">📸 Chế độ chụp vùng</h3>
+      <p style="margin: 0 0 15px 0; font-size: 14px; color: #aaa;">
+        Nhấn và kéo chuột để chọn vùng cần chụp
+      </p>
+      <button id="cancelCaptureMode" style="background: #dc2626; color: #fff; border: none;
+              padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px;
+              font-weight: 500; transition: all 0.3s;">
+        ✕ Hủy (ESC)
+      </button>
+    </div>
+  `;
+  document.body.appendChild(guide);
+
+  // Xử lý nút hủy
+  const cancelBtn = document.getElementById('cancelCaptureMode');
+  if (cancelBtn) {
+    cancelBtn.onclick = cancelCapture;
+  }
+
+  // Tự động ẩn hướng dẫn sau 2 giây
+  setTimeout(() => {
+    if (guide && guide.parentNode) {
+      guide.remove();
+    }
+  }, 2000);
 };
+
+// Hàm hủy capture
+function cancelCapture() {
+  selecting = false;
+  overlay.style.display = 'none';
+  snipBox.style.display = 'none';
+  ui.style.display = 'block';
+  startX = startY = endX = endY = undefined;
+
+  const guide = document.getElementById('captureGuide');
+  if (guide) guide.remove();
+}
+
+// Thêm ESC để hủy
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && selecting) {
+    cancelCapture();
+  }
+});
 
 btnFullPage.onclick = () => {
     ui.style.display = 'none';
@@ -1257,6 +1403,11 @@ btnFullPage.onclick = () => {
 
 overlay.addEventListener('mousedown', e => {
   if (!selecting) return;
+
+  // Ẩn guide nếu còn
+  const guide = document.getElementById('captureGuide');
+  if (guide) guide.remove();
+
   startX = e.clientX;
   startY = e.clientY;
   snipBox.style.left = startX + 'px';
@@ -1264,17 +1415,56 @@ overlay.addEventListener('mousedown', e => {
   snipBox.style.width = '0px';
   snipBox.style.height = '0px';
   snipBox.style.display = 'block';
+
+  // Hiển thị kích thước
+  updateSizeIndicator(0, 0);
 });
 
 overlay.addEventListener('mousemove', e => {
   if (!selecting || startX === undefined) return;
   endX = e.clientX;
   endY = e.clientY;
-  snipBox.style.left = Math.min(startX, endX) + 'px';
-  snipBox.style.top = Math.min(startY, endY) + 'px';
-  snipBox.style.width = Math.abs(endX - startX) + 'px';
-  snipBox.style.height = Math.abs(endY - startX) + 'px';
+
+  const left = Math.min(startX, endX);
+  const top = Math.min(startY, endY);
+  const width = Math.abs(endX - startX);
+  const height = Math.abs(endY - startY);
+
+  snipBox.style.left = left + 'px';
+  snipBox.style.top = top + 'px';
+  snipBox.style.width = width + 'px';
+  snipBox.style.height = height + 'px';
+
+  updateSizeIndicator(width, height);
 });
+
+// Hiển thị kích thước đang chọn
+function updateSizeIndicator(width, height) {
+  let indicator = document.getElementById('sizeIndicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'sizeIndicator';
+    indicator.style.cssText = `
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: 'Roboto', monospace;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 2147483649;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    `;
+    document.body.appendChild(indicator);
+  }
+  indicator.textContent = `📐 ${Math.round(width)} × ${Math.round(height)} px`;
+  indicator.style.display = width > 0 ? 'block' : 'none';
+}
 
 overlay.addEventListener('mouseup', async e => {
   if (!selecting || startX === undefined) return;
@@ -1289,7 +1479,14 @@ overlay.addEventListener('mouseup', async e => {
   ui.style.display = 'block';
   startX = startY = endX = endY = undefined;
 
-  if (width < 10 || height < 10) return;
+  // Xóa indicator
+  const indicator = document.getElementById('sizeIndicator');
+  if (indicator) indicator.remove();
+
+  if (width < 10 || height < 10) {
+    alert('⚠️ Vùng chọn quá nhỏ! Vui lòng chọn vùng lớn hơn.');
+    return;
+  }
 
   handleScreenshot({ x: left, y: top, width: width, height: height });
 });
