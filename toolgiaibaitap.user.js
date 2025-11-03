@@ -1,15 +1,17 @@
 // ==UserScript==
-// @name         AI Giải Bài Tập - Enhanced v3.4 (Minimize Fix)
+// @name         AI Giải Bài Tập - Enhanced v4.0 (CSP & UI Fix)
 // @namespace    http://tampermonkey.net/
-// @version      3.4
-// @description  AI studio với Glassmorphism UI, fix lỗi thu nhỏ
+// @version      4.0
+// @description  AI studio với Glassmorphism UI. Fix lỗi CSP, thêm Light Mode và tùy chỉnh màu sắc.
 // @author       Tran Minh Dung (UI & Fix by Gemini)
 // @match        https://*/*
+// @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      generativelanguage.googleapis.com
+// @connect      cdnjs.cloudflare.com
 // @require      https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js
@@ -18,8 +20,40 @@
 (async function() {
 'use strict';
 
+// === FIX v3.6: TrustedHTML Policy ===
+let safeHTMLPolicy = { createHTML: (s) => s };
+if (window.trustedTypes && window.trustedTypes.createPolicy) {
+    try {
+        safeHTMLPolicy = window.trustedTypes.createPolicy('ai-solver-policy', {
+            createHTML: (string) => string,
+        });
+    } catch (e) {
+        try {
+             safeHTMLPolicy = window.trustedTypes.policy.default || safeHTMLPolicy;
+        } catch (err) {}
+    }
+}
+// ======================================
+
+// === DEFAULT VALUES & HELPERS (v4.0) ===
+const DEFAULT_PRIMARY_COLOR = '#4285f4';
+const DEFAULT_DEVIL_COLOR = '#dc2626';
+
+// Helper: Chuyển HEX sang R,G,B (dùng cho CSS variables)
+function hexToRgb(hex) {
+    let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ?
+        `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+        : '66, 133, 244'; // Fallback to default blue
+}
+
+// === LOAD SAVED SETTINGS (v4.0) ===
 let GEMINI_API_KEY = GM_getValue('geminiApiKey', "");
 let DEVIL_MODE = false;
+let SAVED_THEME = GM_getValue('theme', 'dark');
+let SAVED_PRIMARY_COLOR = GM_getValue('primaryColor', DEFAULT_PRIMARY_COLOR);
+let SAVED_DEVIL_COLOR = GM_getValue('devilColor', DEFAULT_DEVIL_COLOR);
+
 
 // === PROMPTS CHUYÊN BIỆT CHO TỪNG MÔN ===
 const SUBJECT_PROMPTS = {
@@ -113,18 +147,18 @@ Giải thích CỰC KỲ CHI TIẾT, KHÔNG BỎ QUA BẤT KỲ ĐIỀU GÌ:
 // === Floating Toggle Button ===
 const floatingBtn = document.createElement('div');
 floatingBtn.id = 'aiFloatingBtn';
-floatingBtn.innerHTML = `
+floatingBtn.innerHTML = safeHTMLPolicy.createHTML(`
   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="currentColor" opacity="0.6"/>
     <path d="M2 17L12 22L22 17V12L12 17L2 12V17Z" fill="currentColor"/>
   </svg>
-`;
+`);
 document.body.appendChild(floatingBtn);
 
 // === Main UI ===
 const ui = document.createElement('div');
 ui.id = 'aiPanel';
-ui.innerHTML = `
+ui.innerHTML = safeHTMLPolicy.createHTML(`
   <div class="ai-header">
     <div class="header-content">
       <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -134,8 +168,13 @@ ui.innerHTML = `
       <div class="header-text">
         <h2>AI Giải Bài Tập</h2>
       </div>
-      <button class="btn-resize" id="btnResize" title="Thay đổi kích thước">⇲</button>
-      <button class="btn-minimize" id="btnMinimize" title="Thu gọn">−</button>
+      <button class="btn-header" id="btnSettings" title="Cài đặt">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19.14 12.94C19.06 12.65 19 12.33 19 12C19 11.67 19.06 11.35 19.14 11.06L21.12 9.42C21.27 9.3 21.32 9.1 21.23 8.93L19.34 5.7C19.25 5.53 19.06 5.45 18.89 5.52L16.58 6.36C16.18 6.06 15.74 5.81 15.25 5.61L14.93 3.23C14.9 3.05 14.75 2.91 14.56 2.91H10.44C10.25 2.91 10.1 3.05 10.07 3.23L9.75 5.61C9.26 5.81 8.82 6.06 8.42 6.36L6.11 5.52C5.94 5.45 5.75 5.53 5.66 5.7L3.77 8.93C3.68 9.1 3.73 9.3 3.88 9.42L5.86 11.06C5.94 11.35 6 11.67 6 12C6 12.33 5.94 12.65 5.86 12.94L3.88 14.58C3.73 14.7 3.68 14.9 3.77 15.07L5.66 18.3C5.75 18.47 5.94 18.55 6.11 18.48L8.42 17.64C8.82 17.94 9.26 18.19 9.75 18.39L10.07 20.77C10.1 20.95 10.25 21.09 10.44 21.09H14.56C14.75 21.09 14.9 20.95 14.93 20.77L15.25 18.39C15.74 18.19 16.18 17.94 16.58 17.64L18.89 18.48C19.06 18.55 19.25 18.47 19.34 18.3L21.23 15.07C21.32 14.9 21.27 14.7 21.12 14.58L19.14 12.94ZM12.5 14.5C11.12 14.5 10 13.38 10 12C10 10.62 11.12 9.5 12.5 9.5C13.88 9.5 15 10.62 15 12C15 13.38 13.88 14.5 12.5 14.5Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="btn-header" id="btnResize" title="Thay đổi kích thước">⇲</button>
+      <button class="btn-header" id="btnMinimize" title="Thu gọn">−</button>
     </div>
     <div class="status-chip" id="aiStatus">
       <span class="status-dot"></span>
@@ -144,6 +183,29 @@ ui.innerHTML = `
   </div>
 
   <div class="ai-content" id="aiContent">
+
+    <div id="settingsSection" class="section" style="display:none;">
+      <h3 class="settings-title">Cài đặt Giao diện</h3>
+      <div class="setting-item">
+        <label for="themeSelect">Giao diện</label>
+        <div class="select-card compact">
+          <select id="themeSelect" class="material-select">
+            <option value="dark">🌙 Tối (Glass)</option>
+            <option value="light">☀️ Sáng (Opaque)</option>
+          </select>
+        </div>
+      </div>
+      <div class="setting-item">
+        <label for="primaryColorPicker">Màu nhấn</label>
+        <input type="color" id="primaryColorPicker" class="color-picker" value="${SAVED_PRIMARY_COLOR}">
+      </div>
+      <div class="setting-item">
+        <label for="devilColorPicker">Màu Ác Quỷ</label>
+        <input type="color" id="devilColorPicker" class="color-picker" value="${SAVED_DEVIL_COLOR}">
+      </div>
+      <hr class="settings-divider">
+    </div>
+
     <div id="apiKeySection" class="section">
       <div class="input-field compact">
         <input type="password" id="apiKeyInput" value="${GEMINI_API_KEY}" placeholder=" " />
@@ -291,7 +353,7 @@ ui.innerHTML = `
     </div>
   </div>
   <div class="resize-handle" id="resizeHandle"></div>
-`;
+`);
 document.body.appendChild(ui);
 
 // === DOM Elements ===
@@ -317,21 +379,83 @@ const resizeHandle = document.getElementById('resizeHandle');
 const aiContent = document.getElementById('aiContent');
 const allActionButtons = [btnShot, btnFullPage, btnToggleTextMode];
 
+// v4.0: Settings DOM
+const btnSettings = document.getElementById('btnSettings');
+const settingsSection = document.getElementById('settingsSection');
+const themeSelect = document.getElementById('themeSelect');
+const primaryColorPicker = document.getElementById('primaryColorPicker');
+const devilColorPicker = document.getElementById('devilColorPicker');
+
+
 let currentRequest = null;
 let isMinimized = false;
 let currentAnswerText = '';
 let savedWidth = GM_getValue('panelWidth', 280);
 let beforeMinimizeWidth = savedWidth;
 
-// === FIX: Biến lưu chiều cao (cho logic thu nhỏ) ===
 const savedHeight = GM_getValue('panelHeight', 'auto');
 let beforeMinimizeHeight = savedHeight;
 
-// === KaTeX CSS ===
-const katexCSS = document.createElement('link');
-katexCSS.rel = 'stylesheet';
-katexCSS.href = 'https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css';
-document.head.appendChild(katexCSS);
+// === v4.0: Cập nhật CSS Variables ===
+function updateCssVariables(primaryColor, devilColor) {
+    const primaryRgb = hexToRgb(primaryColor);
+    const devilRgb = hexToRgb(devilColor);
+
+    ui.style.setProperty('--ai-primary-color-hex', primaryColor);
+    ui.style.setProperty('--ai-primary-rgb', primaryRgb);
+
+    ui.style.setProperty('--ai-devil-color-hex', devilColor);
+    ui.style.setProperty('--ai-devil-rgb', devilRgb);
+}
+
+// === v4.0: Áp dụng Theme ===
+function applyTheme(theme) {
+    ui.classList.toggle('ai-panel-light', theme === 'light');
+    GM_setValue('theme', theme);
+}
+
+// === v4.0: Xử lý Cài đặt ===
+btnSettings.addEventListener('click', () => {
+    const isVisible = settingsSection.style.display !== 'none';
+    settingsSection.style.display = isVisible ? 'none' : 'block';
+});
+
+themeSelect.addEventListener('change', (e) => {
+    applyTheme(e.target.value);
+});
+
+primaryColorPicker.addEventListener('input', (e) => {
+    const newColor = e.target.value;
+    updateCssVariables(newColor, devilColorPicker.value);
+    GM_setValue('primaryColor', newColor);
+});
+
+devilColorPicker.addEventListener('input', (e) => {
+    const newColor = e.target.value;
+    updateCssVariables(primaryColorPicker.value, newColor);
+    GM_setValue('devilColor', newColor);
+});
+
+// === v4.0 FIX: Tải KaTeX CSS bằng GM_xmlhttpRequest để fix CSP ===
+function loadExternalCSS(url) {
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: url,
+        onload: function(response) {
+            if (response.status === 200) {
+                GM_addStyle(response.responseText);
+            } else {
+                console.error(`Failed to load CSS from ${url}`);
+            }
+        },
+        onerror: function(error) {
+            console.error(`Error loading CSS from ${url}:`, error);
+        }
+    });
+}
+// Gọi hàm fix CSP
+loadExternalCSS('https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css');
+
 
 // === Render LaTeX ===
 function renderMathInElement(element) {
@@ -373,18 +497,18 @@ btnCopy.addEventListener('click', async (e) => {
   try {
     await navigator.clipboard.writeText(currentAnswerText);
     const originalHTML = btnCopy.innerHTML;
-    btnCopy.innerHTML = `
+    // FIX v3.6: TrustedHTML
+    btnCopy.innerHTML = safeHTMLPolicy.createHTML(`
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-    `;
-    btnCopy.style.background = 'rgba(52, 168, 83, 0.2)';
-    btnCopy.style.color = '#81c995';
+    `);
+    btnCopy.classList.add('copied'); // v4.0: Dùng class cho style
 
     setTimeout(() => {
-      btnCopy.innerHTML = originalHTML;
-      btnCopy.style.background = '';
-      btnCopy.style.color = '';
+      // FIX v3.6: TrustedHTML
+      btnCopy.innerHTML = safeHTMLPolicy.createHTML(originalHTML);
+      btnCopy.classList.remove('copied'); // v4.0: Dùng class cho style
     }, 1500);
   } catch (err) {
     console.error('Copy failed:', err);
@@ -397,7 +521,6 @@ let isResizing = false;
 let resizeType = 'none';
 let startResizeX, startResizeY, startWidth, startHeight;
 
-// const savedHeight = GM_getValue('panelHeight', 'auto'); // Đã chuyển lên trên
 ui.style.width = savedWidth + 'px';
 if (savedHeight !== 'auto') {
   ui.style.height = savedHeight + 'px';
@@ -534,37 +657,32 @@ btnMinimize.addEventListener('click', (e) => {
   isMinimized = !isMinimized;
 
   if (isMinimized) {
-    // Lưu lại kích thước hiện tại
     beforeMinimizeWidth = parseInt(ui.style.width);
-    beforeMinimizeHeight = ui.style.height || savedHeight; // Lấy chiều cao đang đặt, hoặc chiều cao đã lưu
+    beforeMinimizeHeight = ui.style.height || savedHeight;
 
-    // Ẩn nội dung và các nút điều khiển
     aiContent.style.display = 'none';
     btnResize.style.display = 'none';
-    resizeHandle.style.display = 'none'; // Ẩn tay cầm resize
+    btnSettings.style.display = 'none'; // v4.0: Ẩn Cài đặt
+    resizeHandle.style.display = 'none';
 
-    // Cập nhật nút thu nhỏ
-    btnMinimize.innerHTML = '□';
+    btnMinimize.innerHTML = safeHTMLPolicy.createHTML('□'); // FIX v3.6: TrustedHTML
     btnMinimize.title = 'Phóng to';
 
-    // Áp dụng kích thước thu nhỏ
-    ui.style.width = '210px';  // Đặt chiều rộng cố định
-    ui.style.height = 'auto';  // TỰ ĐỘNG CO CHIỀU CAO
+    ui.style.width = '210px';
+    ui.style.height = 'auto';
     ui.classList.add('minimized');
 
   } else {
-    // Hiển thị lại nội dung và nút
     aiContent.style.display = 'block';
     btnResize.style.display = 'flex';
-    resizeHandle.style.display = 'block'; // Hiển thị lại tay cầm resize
+    btnSettings.style.display = 'flex'; // v4.0: Hiện Cài đặt
+    resizeHandle.style.display = 'block';
 
-    // Cập nhật nút
-    btnMinimize.innerHTML = '−';
+    btnMinimize.innerHTML = safeHTMLPolicy.createHTML('−'); // FIX v3.6: TrustedHTML
     btnMinimize.title = 'Thu gọn';
 
-    // Khôi phục kích thước
     ui.style.width = beforeMinimizeWidth + 'px';
-    ui.style.height = beforeMinimizeHeight; // Khôi phục chiều cao
+    ui.style.height = beforeMinimizeHeight;
 
     ui.classList.remove('minimized');
   }
@@ -607,23 +725,20 @@ function createPrompt(isImage = true) {
   const langStr = lang === 'vi' ? 'Tiếng Việt' : 'English';
   const source = isImage ? 'trong ảnh' : 'được cung cấp';
 
-  // Base prompt theo môn
   let basePrompt = SUBJECT_PROMPTS[subj] || '';
 
-  // Thêm Devil Mode nếu bật
   if (DEVIL_MODE) {
     basePrompt += '\n\n' + DEVIL_PROMPT;
   }
 
-  // Xử lý mode
   if (mode === 'custom') {
     const customText = customPromptInput.value.trim();
     if (!customText) {
-      document.getElementById('ansBox').innerHTML = `
+      document.getElementById('ansBox').innerHTML = safeHTMLPolicy.createHTML(`
         <div class="error-state compact">
           <p>Vui lòng nhập yêu cầu tùy chỉnh</p>
         </div>
-      `;
+      `);
       return null;
     }
     basePrompt += '\n\n' + customText;
@@ -633,7 +748,6 @@ function createPrompt(isImage = true) {
     basePrompt += `\n\nYêu cầu: Giải chi tiết từng bước.`;
   }
 
-  // Thêm hướng dẫn cuối
   basePrompt += `\n\nBài tập môn ${subj} ${source}. Trả lời bằng ${langStr}.`;
   basePrompt += `\n\n🔢 SỬ DỤNG LATEX/KATEX cho mọi công thức: $...$ (inline), $$...$$ (display).`;
   basePrompt += `\n\n⚠️ Nếu không thể trả lời (thiếu thông tin, không rõ ràng), hãy nói thẳng "Tôi không thể trả lời" và giải thích.`;
@@ -648,20 +762,20 @@ function sendToGemini(prompt, base64Image = null) {
   const imgBox = document.getElementById('imgBox');
   const imgCard = document.getElementById('imgCard');
 
-  ansBox.innerHTML = `
+  ansBox.innerHTML = safeHTMLPolicy.createHTML(`
     <div class="loading-state compact">
       <div class="spinner small"></div>
       <p>Đang xử lý...</p>
       <button id="btnCancelRequest" class="btn-cancel small">Hủy</button>
     </div>
-  `;
+  `);
 
   const btnCancel = document.getElementById('btnCancelRequest');
   if (btnCancel) {
     btnCancel.onclick = () => {
       if (currentRequest) {
         currentRequest.abort();
-        ansBox.innerHTML = `
+        ansBox.innerHTML = safeHTMLPolicy.createHTML(`
           <div class="empty-state compact">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
@@ -669,7 +783,7 @@ function sendToGemini(prompt, base64Image = null) {
             </svg>
             <p>Đã hủy</p>
           </div>
-        `;
+        `);
         currentRequest = null;
       }
     };
@@ -701,7 +815,7 @@ function sendToGemini(prompt, base64Image = null) {
 
         typeEffectWithMath(ansBox, result.trim());
       } catch (err) {
-        ansBox.innerHTML = `
+        ansBox.innerHTML = safeHTMLPolicy.createHTML(`
           <div class="error-state compact">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
@@ -710,20 +824,20 @@ function sendToGemini(prompt, base64Image = null) {
             </svg>
             <p>${err.message || "Lỗi API"}</p>
           </div>
-        `;
+        `);
         console.error("Lỗi Gemini:", r.responseText);
       }
     },
     onerror: err => {
       currentRequest = null;
-      ansBox.innerHTML = `
+      ansBox.innerHTML = safeHTMLPolicy.createHTML(`
         <div class="error-state compact">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
           <p>Lỗi kết nối</p>
         </div>
-      `;
+      `);
     },
     onabort: () => {
       currentRequest = null;
@@ -808,13 +922,13 @@ async function handleScreenshot(options = {}) {
   const ansBox = document.getElementById('ansBox');
 
   imgCard.style.display = 'block';
-  imgBox.innerHTML = `
+  imgBox.innerHTML = safeHTMLPolicy.createHTML(`
     <div class="loading-state compact">
       <div class="spinner small"></div>
       <p>Đang chụp...</p>
       <button id="btnCancelCapture" class="btn-cancel small">Hủy</button>
     </div>
-  `;
+  `);
 
   let cancelled = false;
   const btnCancelCapture = document.getElementById('btnCancelCapture');
@@ -822,7 +936,7 @@ async function handleScreenshot(options = {}) {
     btnCancelCapture.onclick = () => {
       cancelled = true;
       imgCard.style.display = 'none';
-      ansBox.innerHTML = `
+      ansBox.innerHTML = safeHTMLPolicy.createHTML(`
         <div class="empty-state compact">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
@@ -830,11 +944,11 @@ async function handleScreenshot(options = {}) {
           </svg>
           <p>Đã hủy</p>
         </div>
-      `;
+      `);
     };
   }
 
-  ansBox.innerHTML = `
+  ansBox.innerHTML = safeHTMLPolicy.createHTML(`
     <div class="empty-state compact">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
@@ -842,7 +956,7 @@ async function handleScreenshot(options = {}) {
       </svg>
       <p>Chuẩn bị...</p>
     </div>
-  `;
+  `);
 
   try {
     let captureOptions = { ...options };
@@ -879,13 +993,13 @@ async function handleScreenshot(options = {}) {
     if (cancelled) return;
 
     const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-    imgBox.innerHTML = `<img src="${canvas.toDataURL()}" style="cursor: pointer;" id="capturedImage">`;
+    imgBox.innerHTML = safeHTMLPolicy.createHTML(`<img src="${canvas.toDataURL()}" style="cursor: pointer;" id="capturedImage">`);
 
     const capturedImg = document.getElementById('capturedImage');
     if (capturedImg) {
       capturedImg.onclick = () => {
         const imgWindow = window.open('', '_blank');
-        imgWindow.document.write(`
+        imgWindow.document.write(safeHTMLPolicy.createHTML(`
           <html>
             <head>
               <title>Ảnh đã chụp</title>
@@ -896,7 +1010,7 @@ async function handleScreenshot(options = {}) {
             </head>
             <body><img src="${canvas.toDataURL()}" /></body>
           </html>
-        `);
+        `));
       };
     }
 
@@ -906,12 +1020,12 @@ async function handleScreenshot(options = {}) {
     }
   } catch (err) {
     if (cancelled) return;
-    imgBox.innerHTML = `
+    imgBox.innerHTML = safeHTMLPolicy.createHTML(`
       <div class="error-state compact">
         <p>Lỗi: ${err.message}</p>
       </div>
-    `;
-    ansBox.innerHTML = '';
+    `);
+    ansBox.innerHTML = safeHTMLPolicy.createHTML('');
   }
 }
 
@@ -940,11 +1054,11 @@ btnToggleTextMode.addEventListener('click', () => {
 btnSendTextQuestion.addEventListener('click', () => {
   const question = textQuestionInput.value.trim();
   if (!question) {
-    document.getElementById('ansBox').innerHTML = `
+    document.getElementById('ansBox').innerHTML = safeHTMLPolicy.createHTML(`
       <div class="error-state compact">
         <p>Nhập câu hỏi</p>
       </div>
-    `;
+    `);
     return;
   }
   const prompt = createPrompt(false);
@@ -963,80 +1077,51 @@ GM_addStyle(`
   box-sizing: border-box;
 }
 
-/* FIX: Animation panel ra/vào mới */
 @keyframes panelEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
-
 @keyframes panelExit {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
 }
-
 @keyframes bounceIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-  70% {
-    transform: scale(0.9);
-  }
-  100% {
-    transform: scale(1);
-  }
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); }
 }
-
 @keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
 }
 
 #aiFloatingBtn {
-  position: fixed;
+  position: fixed !important;
   bottom: 30px;
   right: 30px;
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
+  /* v4.0: Dùng CSS variable cho màu */
+  background: linear-gradient(135deg, rgba(var(--ai-primary-rgb), 0.8), rgb(var(--ai-primary-rgb)));
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(26, 115, 232, 0.4);
-  z-index: 999998;
+  box-shadow: 0 8px 24px rgba(var(--ai-primary-rgb), 0.4);
+  z-index: 2147483640 !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   animation: bounceIn 0.6s ease, float 3s ease-in-out infinite;
 }
 
 #aiFloatingBtn:hover {
   transform: translateY(-5px) scale(1.1);
-  box-shadow: 0 12px 32px rgba(26, 115, 232, 0.6);
+  box-shadow: 0 12px 32px rgba(var(--ai-primary-rgb), 0.6);
 }
 
 #aiFloatingBtn.active {
-  background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%);
+  background: linear-gradient(135deg, rgba(var(--ai-primary-rgb), 0.6), rgba(var(--ai-primary-rgb), 0.9));
 }
 
 #aiFloatingBtn svg {
@@ -1047,38 +1132,147 @@ GM_addStyle(`
 }
 
 /*
---- 💎 MODERN UI OVERHAUL 💎 ---
+--- 💎 v4.0: THEME & COLOR VARS 💎 ---
+*/
+#aiPanel {
+  /* v4.0: Thiết lập CSS variables cho màu sắc */
+  --ai-primary-color-hex: ${DEFAULT_PRIMARY_COLOR};
+  --ai-primary-rgb: ${hexToRgb(DEFAULT_PRIMARY_COLOR)};
+  --ai-devil-color-hex: ${DEFAULT_DEVIL_COLOR};
+  --ai-devil-rgb: ${hexToRgb(DEFAULT_DEVIL_COLOR)};
+
+  /* v4.0: Biến màu cho Dark Mode (Default) */
+  --ai-bg-color: rgba(28, 28, 30, 0.75);
+  --ai-backdrop-blur: blur(24px) saturate(180%);
+  --ai-border-color: rgba(255, 255, 255, 0.12);
+  --ai-text-color-main: #e4e4e7;
+  --ai-text-color-light: #71717a;
+  --ai-text-color-heading: #fff;
+  --ai-text-color-link: #8ab4f8;
+  --ai-shadow: 0 16px 50px -12px rgba(0,0,0,0.6);
+  --ai-header-bg: rgba(255, 255, 255, 0.08);
+  --ai-header-border: rgba(255, 255, 255, 0.1);
+  --ai-btn-header-bg: rgba(255,255,255,0.1);
+  --ai-btn-header-bg-hover: rgba(255,255,255,0.2);
+  --ai-status-bg: rgba(255,255,255,0.1);
+  --ai-scroll-thumb: rgba(255,255,255,0.15);
+  --ai-scroll-thumb-hover: rgba(255,255,255,0.25);
+  --ai-devil-bg: rgba(255,255,255,0.05);
+  --ai-devil-bg-hover: rgba(255,255,255,0.1);
+  --ai-devil-border: rgba(255,255,255,0.1);
+  --ai-devil-border-hover: rgba(255,255,255,0.15);
+  --ai-devil-thumb-bg: #fff;
+  --ai-devil-track-bg: rgba(255,255,255,0.2);
+  --ai-select-card-bg: rgba(255,255,255,0.05);
+  --ai-select-card-border: rgba(255,255,255,0.1);
+  --ai-select-card-hover-bg: rgba(255,255,255,0.1);
+  --ai-select-card-hover-border: rgba(255,255,255,0.15);
+  --ai-select-dropdown-bg: #2a2a2a;
+  --ai-input-bg: rgba(255,255,255,0.05);
+  --ai-input-border: rgba(255,255,255,0.1);
+  --ai-input-focus-bg: rgba(255,255,255,0.08);
+  --ai-input-label-bg: rgba(28, 28, 30, 0.9);
+  --ai-btn-secondary-bg: rgba(255,255,255,0.1);
+  --ai-btn-secondary-border: rgba(255, 255, 255, 0.15);
+  --ai-btn-secondary-hover-bg: rgba(255,255,255,0.15);
+  --ai-btn-secondary-hover-border: rgba(255, 255, 255, 0.2);
+  --ai-btn-text-hover-bg: rgba(138, 180, 248, 0.1);
+  --ai-result-card-bg: rgba(255,255,255,0.03);
+  --ai-result-card-border: rgba(255,255,255,0.06);
+  --ai-result-card-hover-border: rgba(255,255,255,0.1);
+  --ai-result-header-bg: rgba(255,255,255,0.04);
+  --ai-result-header-border: rgba(255,255,255,0.06);
+  --ai-btn-copy-bg: rgba(255,255,255,0.08);
+  --ai-btn-copy-hover-bg: rgba(138, 180, 248, 0.2);
+  --ai-img-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --ai-img-hover-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  --ai-empty-svg-color: #52525b;
+  --ai-settings-divider: rgba(255, 255, 255, 0.1);
+}
+
+/* v4.0: Light Mode Theme */
+#aiPanel.ai-panel-light {
+  --ai-bg-color: rgba(248, 249, 250, 0.9); /* Sáng, hơi trong */
+  --ai-backdrop-blur: blur(20px) saturate(180%);
+  --ai-border-color: rgba(0, 0, 0, 0.1);
+  --ai-text-color-main: #3c4043;
+  --ai-text-color-light: #5f6368;
+  --ai-text-color-heading: #202124;
+  --ai-text-color-link: rgb(var(--ai-primary-rgb));
+  --ai-shadow: 0 10px 40px -10px rgba(0,0,0,0.2);
+  --ai-header-bg: rgba(0, 0, 0, 0.03);
+  --ai-header-border: rgba(0, 0, 0, 0.08);
+  --ai-btn-header-bg: rgba(0,0,0,0.06);
+  --ai-btn-header-bg-hover: rgba(0,0,0,0.1);
+  --ai-status-bg: rgba(0,0,0,0.05);
+  --ai-scroll-thumb: rgba(0,0,0,0.15);
+  --ai-scroll-thumb-hover: rgba(0,0,0,0.25);
+  --ai-devil-bg: rgba(0,0,0,0.03);
+  --ai-devil-bg-hover: rgba(0,0,0,0.06);
+  --ai-devil-border: rgba(0,0,0,0.08);
+  --ai-devil-border-hover: rgba(0,0,0,0.12);
+  --ai-devil-thumb-bg: #fff;
+  --ai-devil-track-bg: rgba(0,0,0,0.1);
+  --ai-select-card-bg: rgba(0,0,0,0.03);
+  --ai-select-card-border: rgba(0,0,0,0.08);
+  --ai-select-card-hover-bg: rgba(0,0,0,0.06);
+  --ai-select-card-hover-border: rgba(0,0,0,0.12);
+  --ai-select-dropdown-bg: #fff;
+  --ai-input-bg: rgba(0,0,0,0.03);
+  --ai-input-border: rgba(0,0,0,0.1);
+  --ai-input-focus-bg: rgba(0,0,0,0.04);
+  --ai-input-label-bg: rgba(248, 249, 250, 0.95);
+  --ai-btn-secondary-bg: rgba(0,0,0,0.05);
+  --ai-btn-secondary-border: rgba(0, 0, 0, 0.1);
+  --ai-btn-secondary-hover-bg: rgba(0,0,0,0.08);
+  --ai-btn-secondary-hover-border: rgba(0, 0, 0, 0.12);
+  --ai-btn-text-hover-bg: rgba(var(--ai-primary-rgb), 0.1);
+  --ai-result-card-bg: rgba(255,255,255, 0.7);
+  --ai-result-card-border: rgba(0,0,0,0.06);
+  --ai-result-card-hover-border: rgba(0,0,0,0.1);
+  --ai-result-header-bg: rgba(0,0,0,0.02);
+  --ai-result-header-border: rgba(0,0,0,0.06);
+  --ai-btn-copy-bg: rgba(0,0,0,0.06);
+  --ai-btn-copy-hover-bg: rgba(var(--ai-primary-rgb), 0.15);
+  --ai-img-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  --ai-img-hover-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  --ai-empty-svg-color: #bdc1c6;
+  --ai-settings-divider: rgba(0, 0, 0, 0.1);
+}
+
+/*
+--- 💎 UI OVERHAUL (v4.0 CSS Vars) 💎 ---
 */
 
 #aiPanel {
-  position: fixed;
+  position: fixed !important;
   top: 20px;
   right: 20px;
   width: 280px;
 
-  /* FIX: Glassmorphism Background */
-  background: rgba(28, 28, 30, 0.75);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  /* v4.0: Dùng theme vars */
+  background: var(--ai-bg-color);
+  backdrop-filter: var(--ai-backdrop-blur);
+  -webkit-backdrop-filter: var(--ai-backdrop-blur);
+  border: 1px solid var(--ai-border-color);
+  color: var(--ai-text-color-main);
+  box-shadow: var(--ai-shadow);
 
-  color: #e4e4e7;
-  z-index: 999999;
-  border-radius: 14px; /* Tròn hơn một chút */
+  z-index: 2147483641 !important;
+  border-radius: 14px;
   font-family: 'Inter', -apple-system, system-ui, sans-serif;
-
-  /* FIX: Shadow mềm mại */
-  box-shadow: 0 16px 50px -12px rgba(0,0,0,0.6);
-
   display: none;
   overflow: hidden;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform, height; /* FIX: Thêm height vào transition */
+  will-change: transform, height;
 }
 
 #aiPanel.minimized {
   box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
-  /* FIX: Cho phép transition height khi thu nhỏ */
   transition: width 0.3s ease, height 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
+}
+#aiPanel.ai-panel-light.minimized {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05);
 }
 
 #aiPanel.minimized .ai-content {
@@ -1088,37 +1282,38 @@ GM_addStyle(`
 #aiPanel.dragging {
   transition: none;
   cursor: grabbing !important;
-  box-shadow: 0 16px 64px rgba(0,0,0,0.7), 0 0 0 2px rgba(66, 133, 244, 0.4);
+  box-shadow: 0 16px 64px rgba(0,0,0,0.7), 0 0 0 2px rgba(var(--ai-primary-rgb), 0.4);
+}
+#aiPanel.ai-panel-light.dragging {
+    box-shadow: 0 16px 64px rgba(0,0,0,0.3), 0 0 0 2px rgba(var(--ai-primary-rgb), 0.4);
 }
 
 #aiPanel.devil-active {
-  box-shadow: 0 12px 48px rgba(220, 38, 38, 0.5), 0 0 0 2px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 12px 48px rgba(var(--ai-devil-rgb), 0.5), 0 0 0 2px rgba(var(--ai-devil-rgb), 0.4);
 }
 
 #aiPanel.devil-active .ai-header {
-  background: rgba(220, 38, 38, 0.2);
-  border-bottom: 1px solid rgba(220, 38, 38, 0.3);
+  background: rgba(var(--ai-devil-rgb), 0.2);
+  border-bottom: 1px solid rgba(var(--ai-devil-rgb), 0.3);
 }
 
 .ai-header {
-  background: rgba(255, 255, 255, 0.08); /* Nền header glass */
+  background: var(--ai-header-bg);
   padding: 12px 14px;
   border-radius: 14px 14px 0 0;
   cursor: move;
   user-select: none;
   transition: all 0.3s ease;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--ai-header-border);
 }
 
-/* FIX: Khi thu nhỏ, bỏ border bottom của header */
 #aiPanel.minimized .ai-header {
   border-bottom: none;
-  border-radius: 14px; /* Bo tròn cả 4 góc khi thu nhỏ */
+  border-radius: 14px;
 }
 
-
 #aiPanel.dragging .ai-header {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(var(--ai-primary-rgb), 0.15);
 }
 
 .header-content {
@@ -1131,7 +1326,7 @@ GM_addStyle(`
 .logo-icon {
   width: 24px;
   height: 24px;
-  color: #fff;
+  color: var(--ai-text-color-heading);
   flex-shrink: 0;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
@@ -1144,19 +1339,22 @@ GM_addStyle(`
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
+  color: var(--ai-text-color-heading);
   letter-spacing: -0.3px;
   text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
+#aiPanel.ai-panel-light .header-text h2 {
+    text-shadow: none;
+}
 
-.btn-minimize,
-.btn-resize {
-  background: rgba(255,255,255,0.1);
+/* v4.0: Đổi tên .btn-minimize/resize -> .btn-header */
+.btn-header {
+  background: var(--ai-btn-header-bg);
   border: none;
   border-radius: 6px;
   width: 28px;
   height: 28px;
-  color: #fff;
+  color: var(--ai-text-color-main);
   font-size: 18px;
   font-weight: 400;
   cursor: pointer;
@@ -1165,11 +1363,22 @@ GM_addStyle(`
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  padding: 0;
+}
+.btn-header svg { /* v4.0: Thêm style cho icon Cài đặt */
+    width: 18px;
+    height: 18px;
+}
+.btn-header:not(#btnMinimize) { /* v4.0: Fix font-size cho nút resize */
+    font-size: 18px;
+}
+#btnMinimize {
+    font-size: 20px;
+    line-height: 1;
 }
 
-.btn-minimize:hover,
-.btn-resize:hover {
-  background: rgba(255,255,255,0.2);
+.btn-header:hover {
+  background: var(--ai-btn-header-bg-hover);
   transform: scale(1.08);
 }
 
@@ -1190,21 +1399,20 @@ GM_addStyle(`
   right: 3px;
   width: 12px;
   height: 12px;
-  border-right: 2px solid rgba(255,255,255,0.2);
-  border-bottom: 2px solid rgba(255,255,255,0.2);
+  border-right: 2px solid rgba(var(--ai-primary-rgb), 0.2);
+  border-bottom: 2px solid rgba(var(--ai-primary-rgb), 0.2);
   transition: all 0.2s ease;
 }
 
 .resize-handle:hover::after,
 #aiPanel.resizing .resize-handle::after {
-  border-color: rgba(66, 133, 244, 0.7);
+  border-color: rgba(var(--ai-primary-rgb), 0.7);
 }
 
 #aiPanel.resizing {
   transition: none;
   user-select: none;
 }
-
 #aiPanel.resizing * {
   cursor: inherit !important;
 }
@@ -1215,18 +1423,19 @@ GM_addStyle(`
   gap: 6px;
   margin-top: 10px;
   padding: 4px 10px;
-  background: rgba(255,255,255,0.1);
+  background: var(--ai-status-bg);
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
   transition: all 0.3s ease;
+  color: var(--ai-text-color-light); /* v4.0: Dùng var */
 }
 
 .status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--ai-text-color-light); /* v4.0: Dùng var */
   animation: pulse 2s infinite;
 }
 
@@ -1264,37 +1473,74 @@ GM_addStyle(`
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.ai-content::-webkit-scrollbar {
-  width: 4px;
-}
-.ai-content::-webkit-scrollbar-track {
-  background: transparent;
-}
+.ai-content::-webkit-scrollbar { width: 4px; }
+.ai-content::-webkit-scrollbar-track { background: transparent; }
 .ai-content::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
+  background: var(--ai-scroll-thumb);
   border-radius: 2px;
 }
 .ai-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.25);
+  background: var(--ai-scroll-thumb-hover);
 }
 
 .section {
   margin-bottom: 12px;
 }
 
+/* v4.0: CSS Cài đặt */
+#settingsSection {
+    border-bottom: 1px solid var(--ai-settings-divider);
+    padding-bottom: 12px;
+}
+.settings-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ai-text-color-heading);
+    margin: 0 0 14px 0;
+}
+.setting-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.setting-item label {
+    font-size: 13px;
+    color: var(--ai-text-color-light);
+    flex: 1;
+}
+.setting-item .select-card {
+    width: 140px;
+    margin: 0;
+}
+.color-picker {
+    width: 140px;
+    height: 36px;
+    border: 1px solid var(--ai-select-card-border);
+    border-radius: 8px;
+    background: var(--ai-select-card-bg);
+    cursor: pointer;
+    padding: 2px 4px;
+}
+.settings-divider {
+    border: none;
+    height: 1px;
+    background: var(--ai-settings-divider);
+    margin: 16px 0 4px 0;
+}
+
 .devil-mode-section {
   margin-bottom: 12px;
 }
 
-/* FIX: Nút Devil */
 .btn-devil.compact {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1.5px solid rgba(255,255,255,0.1);
+  background: var(--ai-devil-bg);
+  border: 1.5px solid var(--ai-devil-border);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1302,21 +1548,20 @@ GM_addStyle(`
 }
 
 .btn-devil.compact:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.15);
+  background: var(--ai-devil-bg-hover);
+  border-color: var(--ai-devil-border-hover);
   transform: translateY(-2px);
 }
 
 .btn-devil.active {
-  background: rgba(220, 38, 38, 0.15);
-  border-color: rgba(220, 38, 38, 0.5);
-  box-shadow: 0 0 16px rgba(220, 38, 38, 0.3);
+  background: rgba(var(--ai-devil-rgb), 0.15);
+  border-color: rgba(var(--ai-devil-rgb), 0.5);
+  box-shadow: 0 0 16px rgba(var(--ai-devil-rgb), 0.3);
   animation: devilPulse 2s ease-in-out infinite;
 }
-
 @keyframes devilPulse {
-  0%, 100% { box-shadow: 0 0 16px rgba(220, 38, 38, 0.3); }
-  50% { box-shadow: 0 0 24px rgba(220, 38, 38, 0.5); }
+  0%, 100% { box-shadow: 0 0 16px rgba(var(--ai-devil-rgb), 0.3); }
+  50% { box-shadow: 0 0 24px rgba(var(--ai-devil-rgb), 0.5); }
 }
 
 .devil-icon {
@@ -1328,46 +1573,42 @@ GM_addStyle(`
 .btn-devil.active .devil-icon {
   animation: devilShake 0.5s ease infinite;
 }
-
 @keyframes devilShake {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(-10deg); }
   75% { transform: rotate(10deg); }
 }
 
-.devil-text {
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
+.devil-text { flex: 1; display: flex; align-items: center; }
 .devil-title {
   font-size: 13px;
   font-weight: 500;
-  color: #e4e4e7;
+  color: var(--ai-text-color-main);
   transition: color 0.3s;
 }
 .btn-devil.active .devil-title {
-  color: #fca5a5;
+  color: rgb(var(--ai-devil-rgb));
 }
-.devil-toggle {
-  position: relative;
-  flex-shrink: 0;
+#aiPanel.ai-panel-light .btn-devil.active .devil-title {
+    color: rgb(var(--ai-devil-rgb)); /* Giữ màu đỏ cho text */
 }
+
+.devil-toggle { position: relative; flex-shrink: 0; }
 .devil-toggle-track {
   width: 36px;
   height: 18px;
-  background: rgba(255,255,255,0.2);
+  background: var(--ai-devil-track-bg);
   border-radius: 10px;
   position: relative;
   transition: all 0.3s ease;
 }
 .btn-devil.active .devil-toggle-track {
-  background: #dc2626;
+  background: rgb(var(--ai-devil-rgb));
 }
 .devil-toggle-thumb {
   width: 14px;
   height: 14px;
-  background: #fff;
+  background: var(--ai-devil-thumb-bg);
   border-radius: 50%;
   position: absolute;
   top: 2px;
@@ -1377,7 +1618,7 @@ GM_addStyle(`
 }
 .btn-devil.active .devil-toggle-thumb {
   left: 20px;
-  box-shadow: 0 0 8px rgba(220, 38, 38, 0.5);
+  box-shadow: 0 0 8px rgba(var(--ai-devil-rgb), 0.5);
 }
 
 .select-grid {
@@ -1386,11 +1627,10 @@ GM_addStyle(`
   gap: 8px;
 }
 
-/* FIX: Select/Input cards */
 .select-card.compact {
   position: relative;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--ai-select-card-bg);
+  border: 1px solid var(--ai-select-card-border);
   border-radius: 8px;
   padding: 0;
   transition: all 0.2s ease;
@@ -1398,8 +1638,8 @@ GM_addStyle(`
 }
 
 .select-card.compact:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.15);
+  background: var(--ai-select-card-hover-bg);
+  border-color: var(--ai-select-card-hover-border);
   transform: translateY(-1px);
 }
 
@@ -1412,7 +1652,7 @@ GM_addStyle(`
   padding: 10px 12px;
   border: none;
   background: transparent;
-  color: #e4e4e7;
+  color: var(--ai-text-color-main);
   font-size: 13px;
   font-family: 'Inter', sans-serif;
   cursor: pointer;
@@ -1422,8 +1662,8 @@ GM_addStyle(`
 }
 
 .material-select option {
-  background: #2a2a2a; /* Nền dropdown menu */
-  color: #e4e4e7;
+  background: var(--ai-select-dropdown-bg);
+  color: var(--ai-text-color-main);
   padding: 8px;
 }
 
@@ -1436,10 +1676,10 @@ GM_addStyle(`
 .input-field.compact textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--ai-input-border);
   border-radius: 8px;
-  background: rgba(255,255,255,0.05);
-  color: #e4e4e7;
+  background: var(--ai-input-bg);
+  color: var(--ai-text-color-main);
   font-size: 13px;
   font-family: 'Inter', sans-serif;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1453,9 +1693,9 @@ GM_addStyle(`
 
 .input-field.compact input:focus,
 .input-field.compact textarea:focus {
-  background: rgba(255,255,255,0.08);
-  border-color: #4285f4;
-  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+  background: var(--ai-input-focus-bg);
+  border-color: rgb(var(--ai-primary-rgb));
+  box-shadow: 0 0 0 3px rgba(var(--ai-primary-rgb), 0.2);
   transform: translateY(-1px);
 }
 
@@ -1464,7 +1704,7 @@ GM_addStyle(`
 .input-field.compact input:not(:placeholder-shown) + label,
 .input-field.compact textarea:not(:placeholder-shown) + label {
   transform: translateY(-22px) scale(0.85);
-  color: #4285f4;
+  color: rgb(var(--ai-primary-rgb));
 }
 
 .input-field.compact label {
@@ -1472,12 +1712,11 @@ GM_addStyle(`
   left: 12px;
   top: 10px;
   font-size: 13px;
-  color: #71717a;
+  color: var(--ai-text-color-light);
   pointer-events: none;
   transition: all 0.2s ease;
   transform-origin: left top;
-  /* FIX: Nền label cho Glass (lấy từ màu nền chính) */
-  background: rgba(28, 28, 30, 0.9);
+  background: var(--ai-input-label-bg);
   padding: 0 4px;
 }
 
@@ -1510,59 +1749,40 @@ GM_addStyle(`
   transform: translate(-50%, -50%);
   transition: width 0.5s, height 0.5s;
 }
-.btn:active::before {
-  width: 300px;
-  height: 300px;
-}
-.btn svg {
-  width: 16px;
-  height: 16px;
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-.btn span {
-  position: relative;
-  z-index: 1;
-}
-.btn-compact {
-  padding: 9px 14px;
-  font-size: 12px;
-}
-.btn-small {
-  padding: 6px 12px;
-  font-size: 11px;
-}
+.btn:active::before { width: 300px; height: 300px; }
+.btn svg { width: 16px; height: 16px; position: relative; z-index: 1; flex-shrink: 0; }
+.btn span { position: relative; z-index: 1; }
+.btn-compact { padding: 9px 14px; font-size: 12px; }
+.btn-small { padding: 6px 12px; font-size: 11px; }
 
 .btn-primary {
-  background: linear-gradient(135deg, #1a73e8, #4285f4);
+  background: rgb(var(--ai-primary-rgb));
   color: #fff;
-  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--ai-primary-rgb), 0.3);
 }
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.5);
+  box-shadow: 0 4px 12px rgba(var(--ai-primary-rgb), 0.5);
   transform: translateY(-2px);
 }
 
-/* FIX: Nút secondary glass */
 .btn-secondary {
-  background: rgba(255,255,255,0.1);
-  color: #e4e4e7;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--ai-btn-secondary-bg);
+  color: var(--ai-text-color-main);
+  border: 1px solid var(--ai-btn-secondary-border);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255,255,255,0.15);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--ai-btn-secondary-hover-bg);
+  border-color: var(--ai-btn-secondary-hover-border);
   transform: translateY(-1px);
 }
 
 .btn-text {
   background: transparent;
-  color: #8ab4f8;
+  color: var(--ai-text-color-link);
   padding: 6px 12px;
 }
 .btn-text:hover:not(:disabled) {
-  background: rgba(138, 180, 248, 0.1);
+  background: var(--ai-btn-text-hover-bg);
 }
 .btn:disabled {
   opacity: 0.4;
@@ -1584,40 +1804,39 @@ GM_addStyle(`
   margin-top: 12px;
 }
 
-/* FIX: Result card glass */
 .result-card.compact {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--ai-result-card-bg);
+  border: 1px solid var(--ai-result-card-border);
   border-radius: 10px;
   margin-bottom: 10px;
   overflow: hidden;
   transition: all 0.3s ease;
 }
 .result-card.compact:hover {
-  border-color: rgba(255,255,255,0.1);
+  border-color: var(--ai-result-card-hover-border);
 }
 .card-header.compact {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(255,255,255,0.04);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: var(--ai-result-header-bg);
+  border-bottom: 1px solid var(--ai-result-header-border);
   font-weight: 500;
   font-size: 12px;
-  color: #8ab4f8;
+  color: var(--ai-text-color-link);
   position: relative;
 }
 .card-header.compact svg {
   width: 16px;
   height: 16px;
-  color: #8ab4f8;
+  color: var(--ai-text-color-link);
   flex-shrink: 0;
 }
 
 .btn-copy {
   margin-left: auto;
-  background: rgba(255,255,255,0.08);
+  background: var(--ai-btn-copy-bg);
   border: none;
   border-radius: 6px;
   width: 26px;
@@ -1628,11 +1847,15 @@ GM_addStyle(`
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  color: #8ab4f8;
+  color: var(--ai-text-color-link);
 }
 .btn-copy:hover {
-  background: rgba(138, 180, 248, 0.2);
+  background: var(--ai-btn-copy-hover-bg);
   transform: scale(1.1);
+}
+.btn-copy.copied { /* v4.0: Style 'copied' */
+    background: rgba(52, 168, 83, 0.2);
+    color: #81c995;
 }
 .btn-copy svg {
   width: 14px;
@@ -1644,7 +1867,7 @@ GM_addStyle(`
   min-height: 50px;
   font-size: 13px;
   line-height: 1.7;
-  color: #e4e4e7;
+  color: var(--ai-text-color-main);
   font-family: 'Inter', sans-serif;
   max-height: 500px;
   overflow-y: auto;
@@ -1652,47 +1875,38 @@ GM_addStyle(`
   white-space: pre-wrap;
 }
 
-.card-content.compact::-webkit-scrollbar {
-  width: 4px;
-}
-.card-content.compact::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.03);
-  border-radius: 2px;
-}
+.card-content.compact::-webkit-scrollbar { width: 4px; }
+.card-content.compact::-webkit-scrollbar-track { background: var(--ai-result-card-bg); }
 .card-content.compact::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
+  background: var(--ai-scroll-thumb);
   border-radius: 2px;
 }
 .card-content.compact::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.25);
+  background: var(--ai-scroll-thumb-hover);
 }
 .card-content.compact img {
   max-width: 100%;
   border-radius: 6px;
   margin-top: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: var(--ai-img-shadow);
   cursor: pointer;
   transition: all 0.3s ease;
 }
 .card-content.compact img:hover {
   transform: scale(1.02);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: var(--ai-img-hover-shadow);
 }
 
-.card-content.compact .katex {
-  font-size: 1.1em;
-}
+.card-content.compact .katex { font-size: 1.1em; }
 .card-content.compact .katex-display {
   margin: 1em 0;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 10px 0;
 }
-.card-content.compact .katex-display::-webkit-scrollbar {
-  height: 4px;
-}
+.card-content.compact .katex-display::-webkit-scrollbar { height: 4px; }
 .card-content.compact .katex-display::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
+  background: var(--ai-scroll-thumb);
   border-radius: 2px;
 }
 
@@ -1712,12 +1926,12 @@ GM_addStyle(`
   width: 36px;
   height: 36px;
   margin-bottom: 8px;
-  color: #52525b;
+  color: var(--ai-empty-svg-color);
 }
 .empty-state.compact p,
 .loading-state.compact p {
   margin: 0;
-  color: #71717a;
+  color: var(--ai-text-color-light);
   font-size: 12px;
 }
 .error-state.compact {
@@ -1729,17 +1943,16 @@ GM_addStyle(`
 .error-state.compact p {
   margin: 0;
   font-size: 12px;
-  color: #71717a;
+  color: var(--ai-text-color-light);
 }
 
-/* FIX: Spinner animation */
 .spinner.small {
   width: 32px;
   height: 32px;
-  border: 3px solid rgba(138, 180, 248, 0.2);
-  border-top-color: #8ab4f8;
+  border: 3px solid rgba(var(--ai-primary-rgb), 0.2);
+  border-top-color: rgb(var(--ai-primary-rgb));
   border-radius: 50%;
-  animation: spin 1.2s ease-in-out infinite; /* Mượt hơn */
+  animation: spin 1.2s ease-in-out infinite;
   margin-bottom: 8px;
 }
 
@@ -1766,31 +1979,23 @@ GM_addStyle(`
   transform: translateY(-1px);
 }
 
-/*
---- 💎 HẾT PHẦN UI OVERHAUL 💎 ---
-*/
-
-/* --- 💎 FIX: Minimized Layout 💎 --- */
 #aiPanel.minimized .header-content {
-    flex-wrap: wrap; /* Cho phép các item xuống dòng */
-    gap: 8px; /* Khoảng cách giữa các item khi xuống dòng */
+    flex-wrap: wrap;
+    gap: 8px;
 }
-
 #aiPanel.minimized .header-text {
-    flex: 1 1 auto; /* Cho phép text tự động co dãn và xuống dòng */
-    min-width: 100px; /* Độ rộng tối thiểu trước khi bị đẩy */
+    flex: 1 1 auto;
+    min-width: 100px;
 }
-
 #aiPanel.minimized .status-chip {
-    margin-top: 0; /* Bỏ margin top cũ */
-    flex-basis: 100%; /* Ép status chip xuống 1 dòng riêng */
-    order: 99; /* Đẩy nó xuống cuối cùng trong header */
-    justify-content: center; /* Căn giữa nội dung "Ready" */
-    background: rgba(255,255,255,0.05); /* Làm cho nó mờ hơn 1 chút */
+    margin-top: 0;
+    flex-basis: 100%;
+    order: 99;
+    justify-content: center;
+    background: var(--ai-header-bg); /* v4.0: Dùng var */
 }
-/* --- 💎 HẾT PHẦN FIX 💎 --- */
 
-
+/* --- SNIP MODE --- */
 #aiSnipOverlay {
   position: fixed;
   top: 0;
@@ -1806,8 +2011,8 @@ GM_addStyle(`
 
 #aiSnipBox {
   position: fixed;
-  border: 2px solid #4285f4;
-  background: rgba(66, 133, 244, 0.1);
+  border: 2px solid rgb(var(--ai-primary-rgb));
+  background: rgba(var(--ai-primary-rgb), 0.1);
   z-index: 2147483647;
   display: none;
   pointer-events: none;
@@ -1893,7 +2098,7 @@ GM_addStyle(`
 }
 
 #cancelCaptureMode {
-  background: #dc2626;
+  background: rgb(var(--ai-devil-rgb)); /* v4.0: Dùng màu devil */
   color: #fff;
   border: none;
   padding: 10px 24px;
@@ -1906,9 +2111,9 @@ GM_addStyle(`
 }
 
 #cancelCaptureMode:hover {
-  background: #b91c1c;
+  background: rgba(var(--ai-devil-rgb), 0.8);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.5);
+  box-shadow: 0 6px 16px rgba(var(--ai-devil-rgb), 0.5);
 }
 
 @media (max-width: 480px) {
@@ -1917,15 +2122,8 @@ GM_addStyle(`
     left: 16px;
     right: 16px;
   }
-
-  .select-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .action-buttons {
-    grid-template-columns: 1fr;
-  }
-
+  .select-grid { grid-template-columns: 1fr; }
+  .action-buttons { grid-template-columns: 1fr; }
   #aiFloatingBtn {
     bottom: 20px;
     right: 20px;
@@ -1954,11 +2152,18 @@ btnShot.onclick = () => {
 
   const guide = document.createElement('div');
   guide.id = 'captureGuide';
-  guide.innerHTML = `
-    <h3>📸 Chế độ chụp vùng</h3>
-    <p>Nhấn và kéo chuột để chọn vùng cần chụp</p>
-    <button id="cancelCaptureMode">✕ Hủy (ESC)</button>
-  `;
+
+  const h3 = document.createElement('h3');
+  h3.textContent = '📸 Chế độ chụp vùng';
+  const p = document.createElement('p');
+  p.textContent = 'Nhấn và kéo chuột để chọn vùng cần chụp';
+  const btn = document.createElement('button');
+  btn.id = 'cancelCaptureMode';
+  btn.textContent = '✕ Hủy (ESC)';
+
+  guide.appendChild(h3);
+  guide.appendChild(p);
+  guide.appendChild(btn);
   document.body.appendChild(guide);
 
   const cancelBtn = document.getElementById('cancelCaptureMode');
@@ -2096,12 +2301,15 @@ function typeEffectWithMath(el, text, speed = 5) {
   currentAnswerText = text;
   btnCopy.style.display = 'flex';
 
-  el.innerHTML = "";
+  el.innerHTML = safeHTMLPolicy.createHTML("");
   let i = 0;
+  let currentHTML = "";
 
   function typing() {
     if (i < text.length) {
-      el.innerHTML += text.charAt(i++);
+      currentHTML += text.charAt(i++);
+      el.innerHTML = safeHTMLPolicy.createHTML(currentHTML);
+
       el.scrollTop = el.scrollHeight;
 
       if (i % 50 === 0) {
@@ -2121,7 +2329,7 @@ let dragging = false, dragOffset = {x:0, y:0};
 const header = ui.querySelector('.ai-header');
 
 header.addEventListener('mousedown', e => {
-  if (e.target.closest('.btn-minimize') || e.target.closest('.btn-resize')) return;
+  if (e.target.closest('.btn-header')) return; // v4.0: Cập nhật class
 
   dragging = true;
   dragOffset.x = e.clientX - ui.offsetLeft;
@@ -2152,6 +2360,11 @@ document.addEventListener('mouseup', () => {
 });
 
 // === Init ===
+// v4.0: Áp dụng settings đã lưu khi load
+updateCssVariables(SAVED_PRIMARY_COLOR, SAVED_DEVIL_COLOR);
+applyTheme(SAVED_THEME);
+themeSelect.value = SAVED_THEME;
+// Kiểm tra API key
 checkApiKey(GEMINI_API_KEY);
 
 })();
