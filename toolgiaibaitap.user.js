@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Giải Bài Tập - Enhanced v4.0 (CSP & UI Fix)
+// @name         AI Giải Bài Tập - Ultimate v4.1 (Full Fix & Models)
 // @namespace    http://tampermonkey.net/
-// @version      4.0
-// @description  AI studio với Glassmorphism UI. Fix lỗi CSP, thêm Light Mode và tùy chỉnh màu sắc.
+// @version      4.1
+// @description  AI studio với Glassmorphism UI. Fix lỗi CSP, chụp vùng, font KaTeX. Thêm model Gemini 2.5, Pro. Thêm nút dừng và tự động check API.
 // @author       Tran Minh Dung (UI & Fix by Gemini)
 // @match        https://*/*
 // @run-at       document-idle
@@ -239,10 +239,15 @@ ui.innerHTML = safeHTMLPolicy.createHTML(`
     <div class="section">
       <div class="select-grid">
         <div class="select-card compact">
+          <!-- v4.1: Cập nhật Model -->
           <select id="modelSelect" class="material-select">
-            <option value="gemini-2.0-flash-exp">⚡ Flash 2.0</option>
-            <option value="gemini-exp-1206">🚀 Exp 1206</option>
-            <option value="gemini-2.0-flash-thinking-exp-1219">🧠 Thinking</option>
+            <option value="gemini-2.5-flash-preview-09-2025">⚡ Gemini 2.5 Flash</option>
+            <option value="gemini-pro">🚀 Gemini Pro</option>
+            <option value="gemini-2.0-flash-exp">⚙️ Flash 2.0 (Exp)</option>
+            <option value="gemini-exp-1206">⚙️ Exp 1206</option>
+            <option value="gemini-2.0-flash-thinking-exp-1219">⚙️ Thinking (Exp)</option>
+            <option value="" disabled>-- ChatGPT (Chưa hỗ trợ) --</option>
+            <option value="" disabled>-- Claude (Chưa hỗ trợ) --</option>
           </select>
         </div>
 
@@ -333,6 +338,12 @@ ui.innerHTML = safeHTMLPolicy.createHTML(`
             <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
           Đáp án
+          <!-- v4.1: Thêm nút Dừng (Stop Typing) -->
+          <button class="btn-copy" id="btnCancelTyping" style="display:none;" title="Dừng gõ chữ">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+            </svg>
+          </button>
           <button class="btn-copy" id="btnCopy" style="display:none;" title="Copy đáp án">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
@@ -375,6 +386,7 @@ const btnDevilMode = document.getElementById('btnDevilMode');
 const btnMinimize = document.getElementById('btnMinimize');
 const btnResize = document.getElementById('btnResize');
 const btnCopy = document.getElementById('btnCopy');
+const btnCancelTyping = document.getElementById('btnCancelTyping'); // v4.1: Nút dừng gõ
 const resizeHandle = document.getElementById('resizeHandle');
 const aiContent = document.getElementById('aiContent');
 const allActionButtons = [btnShot, btnFullPage, btnToggleTextMode];
@@ -389,7 +401,11 @@ const devilColorPicker = document.getElementById('devilColorPicker');
 
 let currentRequest = null;
 let isMinimized = false;
-let currentAnswerText = '';
+let currentAnswerText = ''; // Toàn bộ text (dùng để copy)
+let currentTypingTimeout = null; // v4.1: Biến kiểm soát setTimeout
+let isTyping = false; // v4.1: Cờ báo đang gõ
+let apiCheckInterval = null; // v4.1: Biến kiểm soát check API
+
 let savedWidth = GM_getValue('panelWidth', 280);
 let beforeMinimizeWidth = savedWidth;
 
@@ -436,14 +452,28 @@ devilColorPicker.addEventListener('input', (e) => {
     GM_setValue('devilColor', newColor);
 });
 
-// === v4.0 FIX: Tải KaTeX CSS bằng GM_xmlhttpRequest để fix CSP ===
+// === v4.1 FIX: Tải KaTeX CSS (fix CSP & font paths) ===
 function loadExternalCSS(url) {
     GM_xmlhttpRequest({
         method: 'GET',
         url: url,
         onload: function(response) {
             if (response.status === 200) {
-                GM_addStyle(response.responseText);
+                // === v4.1 FIX: Rewrite relative font paths in CSS ===
+                let cssText = response.responseText;
+                // Lấy URL base (ví dụ: https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/)
+                const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+
+                // Regex để tìm url(fonts/...) và thay thế
+                // Tìm url() với đường dẫn bắt đầu bằng 'fonts/'
+                cssText = cssText.replace(/url\((['"]?)(fonts\/)(.*?)\1\)/g, (match, quote, fontDir, filename) => {
+                    const newUrl = `${baseUrl}${fontDir}${filename}`;
+                    // Trả về url(https://.../fonts/...)
+                    return `url(${quote}${newUrl}${quote})`;
+                });
+
+                GM_addStyle(cssText);
+                // ===================================================
             } else {
                 console.error(`Failed to load CSS from ${url}`);
             }
@@ -459,8 +489,10 @@ loadExternalCSS('https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.c
 
 // === Render LaTeX ===
 function renderMathInElement(element) {
-  if (typeof window.renderMathInElement === 'undefined' || typeof katex === 'undefined') {
-    console.warn('KaTeX chưa load xong');
+  // v4.1: Thêm kiểm tra window.renderMathInElement
+  if (typeof window.renderMathInElement === 'undefined' || typeof window.katex === 'undefined') {
+    console.warn('KaTeX hoặc auto-render chưa load xong, đang chờ...');
+    setTimeout(() => renderMathInElement(element), 100); // Thử lại sau 100ms
     return;
   }
 
@@ -475,7 +507,7 @@ function renderMathInElement(element) {
       throwOnError: false,
       errorColor: '#cc0000',
       strict: false,
-      trust: true,
+      trust: true, // Cần thiết cho một số macro
       macros: {
         "\\RR": "\\mathbb{R}",
         "\\NN": "\\mathbb{N}",
@@ -512,9 +544,25 @@ btnCopy.addEventListener('click', async (e) => {
     }, 1500);
   } catch (err) {
     console.error('Copy failed:', err);
-    alert('⚠️ Không thể copy. Vui lòng chọn và copy thủ công.');
+    // v4.1: Dùng modal tùy chỉnh thay vì alert
+    showCustomAlert('⚠️ Không thể copy. Vui lòng chọn và copy thủ công.');
   }
 });
+
+// === v4.1: Custom Alert (thay thế alert()) ===
+function showCustomAlert(message) {
+    let alertBox = document.getElementById('aiCustomAlert');
+    if (!alertBox) {
+        alertBox = document.createElement('div');
+        alertBox.id = 'aiCustomAlert';
+        document.body.appendChild(alertBox);
+    }
+    alertBox.innerHTML = safeHTMLPolicy.createHTML(`<p>${message}</p><button>OK</button>`);
+    alertBox.style.display = 'block';
+    alertBox.querySelector('button').onclick = () => {
+        alertBox.style.display = 'none';
+    };
+}
 
 // === Resize ===
 let isResizing = false;
@@ -701,6 +749,9 @@ function toggleUIVisibility() {
 
   if (isVisible) {
     ui.style.animation = 'panelExit 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+    // v4.1: Dừng check API khi đóng panel
+    if (apiCheckInterval) clearInterval(apiCheckInterval);
+    apiCheckInterval = null;
     setTimeout(() => {
       ui.style.display = 'none';
       ui.style.animation = '';
@@ -710,7 +761,7 @@ function toggleUIVisibility() {
     ui.style.display = 'block';
     ui.style.animation = 'panelEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
     floatingBtn.classList.add('active');
-    checkApiKey(GM_getValue('geminiApiKey', ""));
+    checkApiKey(GM_getValue('geminiApiKey', "")); // v4.1: Sẽ tự khởi động interval khi check thành công
   }
 }
 
@@ -758,6 +809,16 @@ function createPrompt(isImage = true) {
 // === Gửi Gemini ===
 function sendToGemini(prompt, base64Image = null) {
   const model = document.getElementById('modelSelect').value;
+  // v4.1: Kiểm tra nếu model bị disabled (ví dụ: ChatGPT)
+  if (!model) {
+      document.getElementById('ansBox').innerHTML = safeHTMLPolicy.createHTML(`
+        <div class="error-state compact">
+          <p>Model này chưa được hỗ trợ. Vui lòng chọn model Gemini.</p>
+        </div>
+      `);
+      return;
+  }
+
   const ansBox = document.getElementById('ansBox');
   const imgBox = document.getElementById('imgBox');
   const imgCard = document.getElementById('imgCard');
@@ -813,7 +874,7 @@ function sendToGemini(prompt, base64Image = null) {
           imgCard.style.display = 'none';
         }
 
-        typeEffectWithMath(ansBox, result.trim());
+        typeEffectWithMath(ansBox, result.trim()); // v4.1: Sẽ kích hoạt nút Dừng Gõ
       } catch (err) {
         ansBox.innerHTML = safeHTMLPolicy.createHTML(`
           <div class="error-state compact">
@@ -845,8 +906,8 @@ function sendToGemini(prompt, base64Image = null) {
   });
 }
 
-// === Check API Key ===
-function checkApiKey(key) {
+// === v4.1: Check API Key (có cờ isSilent) ===
+function checkApiKey(key, isSilent = false) {
   const statusDot = aiStatus.querySelector('.status-dot');
   const statusText = aiStatus.querySelector('.status-text');
 
@@ -856,16 +917,21 @@ function checkApiKey(key) {
     allActionButtons.forEach(b => b.disabled = true);
     apiKeySection.style.display = 'block';
     changeApiSection.style.display = 'none';
+    if (apiCheckInterval) clearInterval(apiCheckInterval); // Dừng check nếu không có key
+    apiCheckInterval = null;
     return;
   }
 
-  statusText.textContent = 'Kiểm tra...';
-  aiStatus.className = 'status-chip status-checking';
-  allActionButtons.forEach(b => b.disabled = true);
+  // Chỉ hiển thị "Kiểm tra..." và vô hiệu hóa nút nếu là check chủ động
+  if (!isSilent) {
+    statusText.textContent = 'Kiểm tra...';
+    aiStatus.className = 'status-chip status-checking';
+    allActionButtons.forEach(b => b.disabled = true);
+  }
 
   GM_xmlhttpRequest({
     method: "POST",
-    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`,
+    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, // v4.1: Check bằng model mới nhất
     headers: { "Content-Type": "application/json" },
     data: JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] }),
     onload: function(response) {
@@ -873,13 +939,24 @@ function checkApiKey(key) {
         const data = JSON.parse(response.responseText || "{}");
 
         if (response.status === 200 && data?.candidates) {
-          statusText.textContent = 'Kết nối';
-          aiStatus.className = 'status-chip status-success';
+          // Chỉ cập nhật UI nếu là check chủ động hoặc trạng thái *trước đó* là lỗi
+          if (!isSilent || aiStatus.classList.contains('status-error')) {
+            statusText.textContent = 'Kết nối';
+            aiStatus.className = 'status-chip status-success';
+          }
           GEMINI_API_KEY = key;
           GM_setValue('geminiApiKey', key);
           apiKeySection.style.display = 'none';
           changeApiSection.style.display = 'block';
           allActionButtons.forEach(b => b.disabled = false);
+
+          // v4.1: Khởi động interval check *chỉ khi* check thành công
+          if (apiCheckInterval) clearInterval(apiCheckInterval); // Xóa interval cũ (nếu có)
+          apiCheckInterval = setInterval(() => {
+              if (ui.style.display !== 'none') { // Chỉ check khi panel mở
+                  checkApiKey(GM_getValue('geminiApiKey', ""), true); // Check "âm thầm"
+              }
+          }, 15000); // 15 giây
           return;
         }
 
@@ -898,11 +975,14 @@ function checkApiKey(key) {
           throw new Error(errMsg || "Lỗi không rõ");
         }
       } catch (e) {
+        // Luôn hiển thị lỗi, dù là check "âm thầm" hay không
         statusText.textContent = e.message;
         aiStatus.className = 'status-chip status-error';
         allActionButtons.forEach(b => b.disabled = true);
         apiKeySection.style.display = 'block';
         changeApiSection.style.display = 'none';
+        if (apiCheckInterval) clearInterval(apiCheckInterval); // Dừng check nếu key lỗi
+        apiCheckInterval = null;
       }
     },
     onerror: function() {
@@ -911,6 +991,8 @@ function checkApiKey(key) {
       allActionButtons.forEach(b => b.disabled = true);
       apiKeySection.style.display = 'block';
       changeApiSection.style.display = 'none';
+      if (apiCheckInterval) clearInterval(apiCheckInterval); // Dừng check nếu lỗi mạng
+      apiCheckInterval = null;
     }
   });
 }
@@ -962,8 +1044,9 @@ async function handleScreenshot(options = {}) {
     let captureOptions = { ...options };
 
     if (options.x !== undefined && options.y !== undefined) {
-      captureOptions.x = options.x + window.pageXOffset;
-      captureOptions.y = options.y + window.pageYOffset;
+      // v4.1: Đã bao gồm pageXOffset trong logic mousedown/mousemove
+      captureOptions.x = options.x;
+      captureOptions.y = options.y;
     } else {
       window.scrollTo(0, 0);
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -974,18 +1057,20 @@ async function handleScreenshot(options = {}) {
       scale: 1.5,
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#ffffff',
-      scrollX: 0,
+      backgroundColor: '#ffffff', // Đảm bảo nền trắng nếu trang không có
+      scrollX: 0, // Đã xử lý scroll trong logic
       scrollY: 0,
       windowWidth: document.documentElement.scrollWidth,
       windowHeight: document.documentElement.scrollHeight,
       ignoreElements: (element) => {
+        // v4.1: Hàm ignore này RẤT QUAN TRỌNG
         return element.id === 'aiPanel' ||
                element.id === 'aiFloatingBtn' ||
                element.id === 'aiSnipOverlay' ||
                element.id === 'aiSnipBox' ||
                element.id === 'sizeIndicator' ||
                element.id === 'captureGuide' ||
+               element.id === 'aiCustomAlert' || // Thêm alert vào ignore
                element.classList.contains('ai-screenshot-ignore');
       }
     });
@@ -1040,6 +1125,10 @@ changeApiBtn.addEventListener('click', () => {
   const statusText = aiStatus.querySelector('.status-text');
   statusText.textContent = "Nhập key";
   aiStatus.className = 'status-chip status-checking';
+
+  // v4.1: Dừng check interval khi đổi key
+  if (apiCheckInterval) clearInterval(apiCheckInterval);
+  apiCheckInterval = null;
 });
 
 outputModeSelect.addEventListener('change', () => {
@@ -1109,7 +1198,8 @@ GM_addStyle(`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(var(--ai-primary-rgb), 0.4);
+  /* v4.1: Thêm shadow để tăng contrast trên nền trắng */
+  box-shadow: 0 8px 24px rgba(var(--ai-primary-rgb), 0.4), 0 2px 4px rgba(0,0,0,0.15);
   z-index: 2147483640 !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   animation: bounceIn 0.6s ease, float 3s ease-in-out infinite;
@@ -1117,7 +1207,7 @@ GM_addStyle(`
 
 #aiFloatingBtn:hover {
   transform: translateY(-5px) scale(1.1);
-  box-shadow: 0 12px 32px rgba(var(--ai-primary-rgb), 0.6);
+  box-shadow: 0 12px 32px rgba(var(--ai-primary-rgb), 0.6), 0 2px 4px rgba(0,0,0,0.15);
 }
 
 #aiFloatingBtn.active {
@@ -1661,6 +1751,13 @@ GM_addStyle(`
   outline: none;
 }
 
+/* v4.1: Style cho option disabled */
+.material-select option:disabled {
+    color: var(--ai-text-color-light);
+    font-style: italic;
+    background: rgba(0,0,0,0.1);
+}
+
 .material-select option {
   background: var(--ai-select-dropdown-bg);
   color: var(--ai-text-color-main);
@@ -1843,12 +1940,26 @@ GM_addStyle(`
   height: 26px;
   padding: 0;
   cursor: pointer;
-  display: none;
+  display: none; /* Ẩn mặc định, JS sẽ hiện */
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
   color: var(--ai-text-color-link);
 }
+/* v4.1: Nút Dừng Gõ */
+#btnCancelTyping {
+    margin-left: auto; /* Đẩy về bên phải */
+    margin-right: 6px; /* Khoảng cách với nút copy */
+    color: rgb(var(--ai-devil-rgb)); /* Màu đỏ */
+}
+#btnCancelTyping:hover {
+    background: rgba(var(--ai-devil-rgb), 0.15);
+}
+/* v4.1: Nút Copy */
+#btnCopy {
+    margin-left: 0; /* Reset margin-left khi có nút Dừng */
+}
+
 .btn-copy:hover {
   background: var(--ai-btn-copy-hover-bg);
   transform: scale(1.1);
@@ -1995,18 +2106,20 @@ GM_addStyle(`
     background: var(--ai-header-bg); /* v4.0: Dùng var */
 }
 
-/* --- SNIP MODE --- */
+/* --- SNIP MODE (v4.1 FIX) --- */
 #aiSnipOverlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.7);
+  /* v4.1: Giảm độ tối, giữ hiệu ứng glass */
+  background: rgba(0,0,0,0.3);
   z-index: 2147483646;
   display: none;
   cursor: crosshair;
   backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 #aiSnipBox {
@@ -2016,8 +2129,8 @@ GM_addStyle(`
   z-index: 2147483647;
   display: none;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.5),
-              0 0 0 9999px rgba(0,0,0,0.5);
+  /* v4.1: Bỏ box-shadow 9999px (nguyên nhân gây mờ) */
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.5);
   transition: none;
 }
 
@@ -2116,6 +2229,53 @@ GM_addStyle(`
   box-shadow: 0 6px 16px rgba(var(--ai-devil-rgb), 0.5);
 }
 
+/* v4.1: CSS cho Custom Alert */
+#aiCustomAlert {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--ai-bg-color, rgba(28, 28, 30, 0.85));
+    backdrop-filter: var(--ai-backdrop-blur, blur(10px));
+    border: 1px solid var(--ai-border-color, rgba(255, 255, 255, 0.1));
+    color: var(--ai-text-color-main, #e4e4e7);
+    box-shadow: var(--ai-shadow, 0 16px 50px -12px rgba(0,0,0,0.6));
+    z-index: 2147483649; /* Cao nhất */
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'Inter', sans-serif;
+    display: none;
+    animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-align: center;
+    max-width: 300px;
+}
+#aiPanel.ai-panel-light #aiCustomAlert {
+    background: var(--ai-bg-color, rgba(248, 249, 250, 0.9));
+    color: var(--ai-text-color-main, #3c4043);
+    border-color: var(--ai-border-color, rgba(0, 0, 0, 0.1));
+    box-shadow: var(--ai-shadow, 0 10px 40px -10px rgba(0,0,0,0.2));
+}
+#aiCustomAlert p {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    line-height: 1.6;
+}
+#aiCustomAlert button {
+    background: rgb(var(--ai-primary-rgb));
+    color: #fff;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+#aiCustomAlert button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(var(--ai-primary-rgb), 0.5);
+}
+
 @media (max-width: 480px) {
   #aiPanel {
     width: calc(100vw - 32px);
@@ -2148,7 +2308,7 @@ btnShot.onclick = () => {
   selecting = true;
   overlay.style.display = 'block';
   snipBox.style.display = 'none';
-  ui.style.display = 'none';
+  ui.style.display = 'none'; // Ẩn panel chính
 
   const guide = document.createElement('div');
   guide.id = 'captureGuide';
@@ -2184,7 +2344,7 @@ function cancelCapture() {
   selecting = false;
   overlay.style.display = 'none';
   snipBox.style.display = 'none';
-  ui.style.display = 'block';
+  ui.style.display = 'block'; // Hiện lại panel
   startX = startY = endX = endY = undefined;
 
   const guide = document.getElementById('captureGuide');
@@ -2212,10 +2372,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 btnFullPage.onclick = () => {
-  ui.style.display = 'none';
+  ui.style.display = 'none'; // Ẩn panel
   setTimeout(() => {
     handleScreenshot({}).finally(() => {
-      ui.style.display = 'block';
+      ui.style.display = 'block'; // Hiện lại panel
     });
   }, 150);
 };
@@ -2229,9 +2389,11 @@ overlay.addEventListener('mousedown', e => {
     setTimeout(() => guide.remove(), 200);
   }
 
+  // v4.1: Luôn lấy tọa độ gốc bao gồm cả scroll
   startX = e.clientX + window.pageXOffset;
   startY = e.clientY + window.pageYOffset;
 
+  // v4.1: Vị trí box thì không cần scroll
   snipBox.style.left = e.clientX + 'px';
   snipBox.style.top = e.clientY + 'px';
   snipBox.style.width = '0px';
@@ -2244,6 +2406,7 @@ overlay.addEventListener('mousedown', e => {
 overlay.addEventListener('mousemove', e => {
   if (!selecting || startX === undefined) return;
 
+  // v4.1: Luôn lấy tọa độ cuối bao gồm cả scroll
   endX = e.clientX + window.pageXOffset;
   endY = e.clientY + window.pageYOffset;
 
@@ -2252,6 +2415,7 @@ overlay.addEventListener('mousemove', e => {
   const width = Math.abs(endX - startX);
   const height = Math.abs(endY - startY);
 
+  // v4.1: Cập nhật vị trí box (đã trừ đi scroll)
   snipBox.style.left = (left - window.pageXOffset) + 'px';
   snipBox.style.top = (top - window.pageYOffset) + 'px';
   snipBox.style.width = width + 'px';
@@ -2282,47 +2446,74 @@ overlay.addEventListener('mouseup', async e => {
   selecting = false;
   overlay.style.display = 'none';
   snipBox.style.display = 'none';
-  ui.style.display = 'block';
+  ui.style.display = 'block'; // Hiện lại panel
   startX = startY = endX = endY = undefined;
 
   const indicator = document.getElementById('sizeIndicator');
   if (indicator) indicator.remove();
 
   if (width < 10 || height < 10) {
-    alert('⚠️ Vùng chọn quá nhỏ! Vui lòng chọn vùng lớn hơn.');
+    showCustomAlert('⚠️ Vùng chọn quá nhỏ! Vui lòng chọn vùng lớn hơn.');
     return;
   }
 
+  // v4.1: Truyền tọa độ tuyệt đối (đã bao gồm scroll) vào handleScreenshot
   handleScreenshot({ x: left, y: top, width: width, height: height });
 });
 
-// === Typing Effect ===
+// === v4.1: Typing Effect (có thể Dừng) ===
 function typeEffectWithMath(el, text, speed = 5) {
-  currentAnswerText = text;
-  btnCopy.style.display = 'flex';
+  currentAnswerText = text; // Lưu toàn bộ text để copy
+  btnCopy.style.display = 'none'; // Ẩn nút copy
+  btnCancelTyping.style.display = 'flex'; // Hiện nút dừng
+  isTyping = true;
 
-  el.innerHTML = safeHTMLPolicy.createHTML("");
+  if (currentTypingTimeout) {
+      clearTimeout(currentTypingTimeout); // Xóa timeout cũ nếu có
+  }
+
+  el.innerHTML = safeHTMLPolicy.createHTML(""); // Xóa nội dung cũ
   let i = 0;
   let currentHTML = "";
+  let stopTyping = false;
+
+  btnCancelTyping.onclick = () => {
+      stopTyping = true;
+  };
 
   function typing() {
-    if (i < text.length) {
-      currentHTML += text.charAt(i++);
-      el.innerHTML = safeHTMLPolicy.createHTML(currentHTML);
-
-      el.scrollTop = el.scrollHeight;
-
-      if (i % 50 === 0) {
-        renderMathInElement(el);
-      }
-
-      setTimeout(typing, speed);
-    } else {
-      renderMathInElement(el);
+    // Dừng nếu:
+    // 1. Đã nhấn nút Dừng
+    // 2. Đã gõ xong
+    if (stopTyping || i >= text.length) {
+        el.innerHTML = safeHTMLPolicy.createHTML(text); // Hiển thị toàn bộ text
+        renderMathInElement(el); // Render KaTeX lần cuối
+        btnCancelTyping.style.display = 'none'; // Ẩn nút dừng
+        btnCopy.style.display = 'flex'; // Hiện nút copy
+        isTyping = false;
+        if(currentTypingTimeout) clearTimeout(currentTypingTimeout);
+        return; // Kết thúc
     }
+
+    // Gõ ký tự tiếp theo
+    currentHTML += text.charAt(i++);
+    el.innerHTML = safeHTMLPolicy.createHTML(currentHTML);
+
+    // Tự động cuộn xuống
+    el.scrollTop = el.scrollHeight;
+
+    // Render KaTeX định kỳ để không bị giật
+    if (i % 50 === 0) {
+        renderMathInElement(el);
+    }
+
+    // Lên lịch gõ ký tự tiếp theo
+    currentTypingTimeout = setTimeout(typing, speed);
   }
-  typing();
+
+  typing(); // Bắt đầu gõ
 }
+
 
 // === Dragging ===
 let dragging = false, dragOffset = {x:0, y:0};
@@ -2364,7 +2555,8 @@ document.addEventListener('mouseup', () => {
 updateCssVariables(SAVED_PRIMARY_COLOR, SAVED_DEVIL_COLOR);
 applyTheme(SAVED_THEME);
 themeSelect.value = SAVED_THEME;
-// Kiểm tra API key
+
+// Kiểm tra API key (hàm này sẽ tự khởi động interval check)
 checkApiKey(GEMINI_API_KEY);
 
 })();
